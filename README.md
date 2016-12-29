@@ -19,4 +19,8 @@ Codebook for the margin improvement tracker tool (app) used to record, visualise
 * gmdelta_actuals: numeric matrix, gross margin delta of each activity included in the Actuals input, for each month of Actuals provided
 * gmactuals: dataframe, month (date) and gross margin (numeric) of each month provided in Actuals (total for month)
 
+### Marshalling for app UI
+* dashgmpermonth: dataframe, intended to provide data on gross margin per month for actual, forecast, promise and other user-selected scenarios. This data is used for charts and tables.
+* dashgmcum: dataframe, cumulative expression of dashgmpermonth
+
 
