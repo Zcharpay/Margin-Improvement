@@ -24,5 +24,6 @@ Codebook for the margin improvement tracker tool (app) used to record, visualise
 * dashgmpermonth: dataframe, intended to provide data on gross margin per month for actual, forecast, promise and other user-selected scenarios. This data is used for charts and tables.
 * dashgmcum: dataframe, cumulative expression of dashgmpermonth
 * dashgmpermonth_acty: dataframe, gross margin per month broken down by activity for actual, forecast, promise.
+* dashgmdeltamonth: dataframe, same as dashgmpermonth but expresses as delta GM.
 
 
