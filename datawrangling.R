@@ -4,7 +4,7 @@ library(lubridate)
 library(reshape2)
 library(ggplot2)
 
-filename <- "Test tracker structure6.xlsx"
+filename <- "Test tracker structure7.xlsx"
 
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
 prices <- read.xlsx(file=filename,sheetName = "Prices",stringsAsFactors=FALSE,header=TRUE)
@@ -70,9 +70,9 @@ metadata <- metadata[rowSums(is.na(metadata))<ncol(metadata),colSums(is.na(metad
 rnames <- as.character(metadata[,1]); cnames <- tolower(colnames(metadata)[-1])
 metadata <- metadata[,-1]
 colnames(metadata) <- cnames; rownames(metadata) <- rnames
-# Apart from title and description fields, all fields in this table need to be factors
-index <- !grepl("title|description",colnames(metadata))
-metadata[,index] <- lapply(metadata[,index],as.factor)
+# # Apart from title and description fields, all fields in this table need to be factors
+# index <- !grepl("title|description",colnames(metadata))
+# metadata[,index] <- lapply(metadata[,index],as.factor)
 
 ## Read scenario configuration table from the excel workbook
 scenarioconfig <- read.xlsx(file=filename,sheetName = "Scenario Config",stringsAsFactors=FALSE,header=TRUE)
@@ -234,8 +234,32 @@ collookfwd <- filter(dashgmdeltamonth[!mthwithactuals,],
 collookfwd$year <- year(collookfwd$month)
 collookfwd <- group_by(collookfwd, variable, year) %>% summarise(sum = sum(value)) %>% ungroup
 collookfwd <- dcast(collookfwd, variable ~ year, value.var = "sum")
-dashsummary <- merge(select(collookback,variable,Realised), collookfwd, by = "variable", all = TRUE, sort = FALSE)
-dashsummary$variable <- sapply(dashsummary$variable,as.character)
-dashsummary[match(dashsummary$variable,c("promgm","fcastgm","actualgm")),"variable"] <- c("Promise","Forecast","Actual")
-dashsummary <- dashsummary[match(c("Promise","Forecast","Actual"),dashsummary$variable),]
-dashtable[["summary_cum"]] <- cbind(dashtable[["summary"]][,1:2],t(apply(dashtable[["summary"]][,-(1:2)],1,cumsum)))
+dashtable <- list(summary = merge(select(collookback,variable,Realised), collookfwd, 
+                                  by = "variable", all = TRUE, sort = FALSE))
+dashtable[["summary"]]$variable <- sapply(dashtable[["summary"]]$variable,as.character)
+dashtable[["summary"]][match(dashtable[["summary"]]$variable,
+                             c("promgm","fcastgm","actualgm")),"variable"] <- c("Promise","Forecast","Actual")
+dashtable[["summary"]] <- dashtable[["summary"]][match(c("Promise","Forecast","Actual")
+                                                       ,dashtable[["summary"]]$variable),]
+# dashtable[["summary_cum"]] <- cbind(dashtable[["summary"]][,1:2],t(apply(dashtable[["summary"]][,-(1:2)],1,cumsum)))
+# dashtable[["past_whichmths"]] <- gmactuals$month == dashgmpermonth_acty$month
+dashtable[["past_whichmths"]] <- as.logical(rowSums(mapply(FUN = function(x,y){x == y},gmactuals$month,
+                                                MoreArgs = list(dashgmpermonth_acty$month))))
+dashtable[["past"]] <- select(dashgmpermonth_acty[dashtable[["past_whichmths"]],],-(mergeidx),-(month))
+# dashtable[["past"]]
+dashtable[["past"]] <- dashtable[["past"]] %>% melt(id.vars = "activity") %>% 
+              group_by(activity, variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
+              dcast(activity ~ variable, value.var = "sum")
+dashtable[["past_dropempties"]] <- with(dashtable[["past"]], actualgm==0 & fcastgm==0 & promgm ==0)
+dashtable[["past_alldata"]] <- dashtable[["past"]]
+dashtable[["past"]] <- dashtable[["past"]][!dashtable[["past_dropempties"]],]
+dashtable[["past"]]$activity <- sapply(dashtable[["past"]]$activity,as.character)
+dashtable[["past"]]$Title <- metadata[dashtable[["past"]]$activity,"title"]
+dashtable[["past"]]$Category <- metadata[dashtable[["past"]]$activity,"summary.category"]
+colorder <- c(1,match(c("Category","Title"),names(dashtable[["past"]])),2:(ncol(dashtable[["past"]])-2))
+dashtable[["past"]] <- dashtable[["past"]][,colorder]
+colnames(dashtable[["past"]])[-1:-3] <- c("Actual","Forecast","Promise","Act-Fcast","Fcast-Prom","Act-Prom")
+dashtable[["past"]][-(1:3)] <- round(dashtable[["past"]][-(1:3)],1)
+
+# dashtable[["pastbycat"]]
+# dashtable[["pastbycat"]] <- cbind(x,dashtable[["past"]])
