@@ -39,25 +39,28 @@ ui <- dashboardPage(
                            tableOutput("dashtable_summary_table")
                            ),
                   tabPanel("Past Performance",
-                           selectInput("dashtable_past_select", label = NULL, 
-                                       choices = list("By Category" = 1, "Details" = 2), 
-                                       selected = 1),
+                           # selectInput("dashtable_past_select", label = NULL, 
+                           #             choices = list("By Category" = 1, "Details" = 2), 
+                           #             selected = 1),
                            DT::dataTableOutput("dashtable_past_table"),
                            br(),
                            DT::dataTableOutput("dashtable_past_table_details")
                            ),
-                  tabPanel("Future", "Tab content 3")
-                )
+                  tabPanel("Future", "Tab content 3"),
+                  tabPanel("Selected Month",
+                           tableOutput("plot_clickedpoints")
+                           )
+                    )
               ),
               fluidRow(
                 box(title = "Month details", collapsible = TRUE,
                     "No Month Selected"
                     )
-              ),
-              fluidRow(
-                box(tableOutput("plot_clickedpoints")
-                    )
               )
+              # fluidRow(
+              #   box(tableOutput("plot_clickedpoints")
+              #       )
+              # )
             ),
 
       # Second tab content
@@ -78,11 +81,12 @@ server <- function(input, output){
   output$dashtable_summary_table <- renderTable(dashtable[["summary"]])
   
   output$dashtable_past_table <- DT::renderDataTable({
-    if(input$dashtable_past_select==1){
+    # if(input$dashtable_past_select==1){
       dashtable[["pastbycat"]]
-    }else{
-    select(dashtable[["past"]],-(activity))
-    }},
+    # }else{
+    # select(dashtable[["past"]],-(activity))
+    },
+    options = list(dom = "t"),
     # options = list(autoWidth = TRUE),
     rownames = FALSE
     )
@@ -95,6 +99,7 @@ server <- function(input, output){
       filter(select(dashtable[["past"]],-(activity)),Category %in% cat)
     }
   },
+  options = list(pageLength = 25),
   # options = list(autoWidth = TRUE),
   rownames = FALSE
   )

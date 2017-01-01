@@ -258,10 +258,11 @@ dashtable[["past"]]$Title <- metadata[dashtable[["past"]]$activity,"title"]
 dashtable[["past"]]$Category <- metadata[dashtable[["past"]]$activity,"summary.category"]
 colorder <- c(1,match(c("Category","Title"),names(dashtable[["past"]])),2:(ncol(dashtable[["past"]])-2))
 dashtable[["past"]] <- dashtable[["past"]][,colorder]
-colnames(dashtable[["past"]])[-1:-3] <- c("Actual","Forecast","Promise","Act-Fcast","Fcast-Prom","Act-Prom")
+colnames(dashtable[["past"]])[-1:-3] <- c("Actual","Forecast","Promise","Act.to.Fcast","Fcast.to.Prom","Act.to.Prom")
 dashtable[["past"]][-(1:3)] <- round(dashtable[["past"]][-(1:3)],1)
+dashtable[["past"]] <- arrange(dashtable[["past"]],desc(Act.to.Prom,Title))
 
 dashtable[["pastbycat"]] <- melt(select(dashtable[["past"]],-(activity),-(Title)), id.vars = "Category")
 dashtable[["pastbycat"]] <- dashtable[["pastbycat"]] %>% group_by(Category, variable) %>% summarise(sum = sum(value)) %>%
-                            ungroup %>% dcast(Category ~ variable, value.var = "sum")
-# dashtable[["pastbycat"]] <- cbind(x,dashtable[["past"]])
+                            ungroup %>% dcast(Category ~ variable, value.var = "sum") %>%
+                            arrange(desc(Act.to.Prom),Category)
