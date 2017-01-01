@@ -1,5 +1,6 @@
 library(shiny)
 library(shinydashboard)
+library(DT)
 
 source("datawrangling.R")
 
@@ -32,7 +33,8 @@ ui <- dashboardPage(
                 tabBox(
                   title = "Summary of Selected Time Period",
                   # The id lets us use input$tabset1 on the server to find the current tab
-                  id = "dashtable_tabs", height = "250px",
+                  id = "dashtable_tabs", width = 9,
+                  # height = "250px",
                   tabPanel("Summary",
                            tableOutput("dashtable_summary_table")
                            ),
@@ -40,7 +42,9 @@ ui <- dashboardPage(
                            selectInput("dashtable_past_select", label = NULL, 
                                        choices = list("By Category" = 1, "Details" = 2), 
                                        selected = 1),
-                           dataTableOutput("dashtable_past_table")
+                           DT::dataTableOutput("dashtable_past_table"),
+                           br(),
+                           DT::dataTableOutput("dashtable_past_table_details")
                            ),
                   tabPanel("Future", "Tab content 3")
                 )
@@ -73,10 +77,30 @@ server <- function(input, output){
 
   output$dashtable_summary_table <- renderTable(dashtable[["summary"]])
   
-  output$dashtable_past_table <- renderDataTable({
+  output$dashtable_past_table <- DT::renderDataTable({
+    if(input$dashtable_past_select==1){
+      dashtable[["pastbycat"]]
+    }else{
     select(dashtable[["past"]],-(activity))
-  })
+    }},
+    # options = list(autoWidth = TRUE),
+    rownames = FALSE
+    )
 
+  output$dashtable_past_table_details <- DT::renderDataTable({
+    if(is.null(input$dashtable_past_table_rows_selected)){
+      select(dashtable[["past"]],-(activity))
+    }else{
+      cat <- dashtable[["pastbycat"]][input$dashtable_past_table_rows_selected,"Category"]
+      filter(select(dashtable[["past"]],-(activity)),Category %in% cat)
+    }
+  },
+  # options = list(autoWidth = TRUE),
+  rownames = FALSE
+  )
+  
+  # output$dashtable_past_table_details <- renderPrint(input$dashtable_past_table_rows_selected)
+  
   output$plot_clickedpoints <- renderTable({
     # For base graphics, we need to specify columns, though for ggplot2,
     # it's usually not necessary. 

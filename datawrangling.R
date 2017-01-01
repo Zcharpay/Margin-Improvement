@@ -261,5 +261,7 @@ dashtable[["past"]] <- dashtable[["past"]][,colorder]
 colnames(dashtable[["past"]])[-1:-3] <- c("Actual","Forecast","Promise","Act-Fcast","Fcast-Prom","Act-Prom")
 dashtable[["past"]][-(1:3)] <- round(dashtable[["past"]][-(1:3)],1)
 
-# dashtable[["pastbycat"]]
+dashtable[["pastbycat"]] <- melt(select(dashtable[["past"]],-(activity),-(Title)), id.vars = "Category")
+dashtable[["pastbycat"]] <- dashtable[["pastbycat"]] %>% group_by(Category, variable) %>% summarise(sum = sum(value)) %>%
+                            ungroup %>% dcast(Category ~ variable, value.var = "sum")
 # dashtable[["pastbycat"]] <- cbind(x,dashtable[["past"]])
