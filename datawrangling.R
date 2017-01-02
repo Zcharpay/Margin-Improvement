@@ -241,17 +241,15 @@ dashtable[["summary"]][match(dashtable[["summary"]]$variable,
                              c("promgm","fcastgm","actualgm")),"variable"] <- c("Promise","Forecast","Actual")
 dashtable[["summary"]] <- dashtable[["summary"]][match(c("Promise","Forecast","Actual")
                                                        ,dashtable[["summary"]]$variable),]
-# dashtable[["summary_cum"]] <- cbind(dashtable[["summary"]][,1:2],t(apply(dashtable[["summary"]][,-(1:2)],1,cumsum)))
-# dashtable[["past_whichmths"]] <- gmactuals$month == dashgmpermonth_acty$month
+
 dashtable[["past_whichmths"]] <- as.logical(rowSums(mapply(FUN = function(x,y){x == y},gmactuals$month,
                                                 MoreArgs = list(dashgmpermonth_acty$month))))
 dashtable[["past"]] <- select(dashgmpermonth_acty[dashtable[["past_whichmths"]],],-(mergeidx),-(month))
-# dashtable[["past"]]
 dashtable[["past"]] <- dashtable[["past"]] %>% melt(id.vars = "activity") %>% 
               group_by(activity, variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
               dcast(activity ~ variable, value.var = "sum")
 dashtable[["past_dropempties"]] <- with(dashtable[["past"]], actualgm==0 & fcastgm==0 & promgm ==0)
-dashtable[["past_alldata"]] <- dashtable[["past"]]
+# dashtable[["past_alldata"]] <- dashtable[["past"]]
 dashtable[["past"]] <- dashtable[["past"]][!dashtable[["past_dropempties"]],]
 dashtable[["past"]]$activity <- sapply(dashtable[["past"]]$activity,as.character)
 dashtable[["past"]]$Title <- metadata[dashtable[["past"]]$activity,"title"]
@@ -260,9 +258,50 @@ colorder <- c(1,match(c("Category","Title"),names(dashtable[["past"]])),2:(ncol(
 dashtable[["past"]] <- dashtable[["past"]][,colorder]
 colnames(dashtable[["past"]])[-1:-3] <- c("Actual","Forecast","Promise","Act.to.Fcast","Fcast.to.Prom","Act.to.Prom")
 dashtable[["past"]][-(1:3)] <- round(dashtable[["past"]][-(1:3)],1)
-dashtable[["past"]] <- arrange(dashtable[["past"]],desc(Act.to.Prom,Title))
+dashtable[["past"]] <- arrange(dashtable[["past"]],desc(Act.to.Prom),Title)
 
 dashtable[["pastbycat"]] <- melt(select(dashtable[["past"]],-(activity),-(Title)), id.vars = "Category")
 dashtable[["pastbycat"]] <- dashtable[["pastbycat"]] %>% group_by(Category, variable) %>% summarise(sum = sum(value)) %>%
                             ungroup %>% dcast(Category ~ variable, value.var = "sum") %>%
                             arrange(desc(Act.to.Prom),Category)
+
+dashtable[["future_whichmths"]] <- !dashtable[["past_whichmths"]]
+dashtable[["future_data"]] <- select(dashgmpermonth_acty[dashtable[["future_whichmths"]],],-(mergeidx),
+                                -(actualgm),-(act.fcast),-(act.prom))
+dashtable[["future_data"]]$year <- year(dashtable[["future_data"]]$month)
+# dashtable[["future_dropempty"]] <- with(dashtable[["future"]],fcastgm==0 & promgm==0)
+# dashtable[["future"]] <- dashtable[["future"]][!dashtable[["future_dropempty"]],]
+dashtable[["future_data"]] <- select(dashtable[["future_data"]],-(month)) %>% melt(id.vars = c("activity","year")) %>%
+                      group_by(activity, year, variable) %>% summarise(sum = sum(value)) %>% ungroup
+                      # dcast(activity ~ variable, value.var = "sum")
+dashtable[["future_data"]]$activity <- sapply(dashtable[["future_data"]]$activity,as.character)
+dashtable[["future_data"]]$Title <- metadata[dashtable[["future_data"]]$activity,"title"]
+dashtable[["future_data"]]$Category <- metadata[dashtable[["future_data"]]$activity,"summary.category"]
+dashtable[["future_data"]]$sum <- round(dashtable[["future_data"]]$sum,1)
+dashtable[["future"]] <- dashtable[["future_data"]] %>% select(-(activity)) %>% 
+                                dcast(variable + Category + Title ~ year, value.var="sum")
+colnames(dashtable[["future"]]) <- sub("variable","type",colnames(dashtable[["future"]]))
+dashtable[["futurebycat"]] <- dashtable[["future"]] %>% melt(id.vars = c("type","Category","Title")) %>%
+                                  group_by(type,Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
+                                  dcast(type + Category ~ variable, value.var = "sum")
+dashtable[["future_types"]] <- c("fcastgm","promgm","fcast.prom")
+# dashtable[["future_fcast"]] <- dashtable[["future"]] %>% filter(variable == "fcastgm") %>% 
+#                                 select(-(activity),-(variable)) %>% dcast(Category + Title ~ year, value.var="sum")
+# dashtable[["future_prom"]] <- dashtable[["future"]] %>% filter(variable == "promgm") %>% 
+#                                 select(-(activity),-(variable)) %>% dcast(Category + Title ~ year, value.var="sum")
+# dashtable[["future_delta"]] <- dashtable[["future"]] %>% filter(variable == "fcast.prom") %>% 
+#                                 select(-(activity),-(variable)) %>% dcast(Category + Title ~ year, value.var="sum")
+# dashtable[["future_fcastbycat"]] <- dashtable[["future_fcast"]] %>% melt(id.vars = c("Category","Title")) %>%
+#                                 group_by(Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
+#                                 dcast(Category ~ variable, value.var = "sum")
+# dashtable[["future_prombycat"]] <- dashtable[["future_prom"]] %>% melt(id.vars = c("Category","Title")) %>%
+#                                 group_by(Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
+#                                 dcast(Category ~ variable, value.var = "sum")
+# dashtable[["future_deltabycat"]] <- dashtable[["future_delta"]] %>% melt(id.vars = c("Category","Title")) %>%
+#                                 group_by(Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
+#                                 dcast(Category ~ variable, value.var = "sum")
+# colorder <- c(1,match(c("Category","Title"),names(dashtable[["future"]])),2:(ncol(dashtable[["future"]])-2))
+# dashtable[["future"]] <- dashtable[["future"]][,colorder]
+# colnames(dashtable[["future"]])[-1:-3] <- c("Forecast","Promise","Fcast.to.Prom")
+# dashtable[["future"]] <- arrange(dashtable[["future"]],desc(Fcast.to.Prom),Title)
+

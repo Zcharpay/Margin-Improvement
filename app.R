@@ -39,14 +39,18 @@ ui <- dashboardPage(
                            tableOutput("dashtable_summary_table")
                            ),
                   tabPanel("Past Performance",
-                           # selectInput("dashtable_past_select", label = NULL, 
-                           #             choices = list("By Category" = 1, "Details" = 2), 
-                           #             selected = 1),
                            DT::dataTableOutput("dashtable_past_table"),
                            br(),
                            DT::dataTableOutput("dashtable_past_table_details")
                            ),
-                  tabPanel("Future", "Tab content 3"),
+                  tabPanel("Future",
+                           selectInput("dashtable_future_select", label = "Select:",
+                                       choices = list("Forecast" = 1, "Promise" = 2, "Delta" = 3),
+                                       selected = 1),
+                           DT::dataTableOutput("dashtable_future_table"),
+                           br(),
+                           DT::dataTableOutput("dashtable_future_table_details")
+                           ),
                   tabPanel("Selected Month",
                            tableOutput("plot_clickedpoints")
                            )
@@ -98,6 +102,57 @@ server <- function(input, output){
       cat <- dashtable[["pastbycat"]][input$dashtable_past_table_rows_selected,"Category"]
       filter(select(dashtable[["past"]],-(activity)),Category %in% cat)
     }
+  },
+  options = list(pageLength = 25),
+  # options = list(autoWidth = TRUE),
+  rownames = FALSE
+  )
+  
+  output$dashtable_future_table <- DT::renderDataTable({
+    # browser()
+    select(filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][as.numeric(
+      input$dashtable_future_select)]),-(type))
+    # if(input$dashtable_future_select==1){
+    #   type <- "fcastgm"
+    #   select(filter(dashtable[["futurebycat"]],type=="fcastgm"),-(type))
+    # }else if(input$dashtable_future_select==2){
+    #   select(filter(dashtable[["futurebycat"]],type=="promgm"),-(type))
+    # }else if(input$dashtable_future_select==3){
+    #   select(filter(dashtable[["futurebycat"]],type=="fcast.prom"),-(type))
+    # }
+  },
+  options = list(dom = "t"),
+  rownames = FALSE
+  )
+  
+  futurecat <- reactive({
+    if(is.null(input$dashtable_future_table_rows_selected)){
+      unique(dashtable[["future"]]$Category)
+    }else{
+      filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][
+        as.numeric(input$dashtable_future_select)])[input$dashtable_future_table_rows_selected,"Category"]
+    }
+    })
+  
+  # observeEvent(futurecat,print(futurecat()))
+  
+  output$dashtable_future_table_details <- DT::renderDataTable({
+    # if(is.null(input$dashtable_past_table_rows_selected)){
+    #   cat <- unique(dashtable[["future"]]$Category)
+    # }else{
+    #   cat <- filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][
+    #     as.numeric(input$dashtable_future_select)])[input$dashtable_future_table_rows_selected,"Category"]
+    # }
+    # print(cat)
+    select(filter(dashtable[["future"]],type==dashtable[["future_types"]][
+        as.numeric(input$dashtable_future_select)] & Category %in% futurecat()),-(type))
+    # if(input$dashtable_future_select==1){
+    #   select(filter(dashtable[["future"]],type=="fcastgm" & Category %in% cat),-(type))
+    # }else if(input$dashtable_future_select==2){
+    #   select(filter(dashtable[["future"]],type=="promgm" & Category %in% cat),-(type))
+    # }else if(input$dashtable_future_select==3){
+    #   select(filter(dashtable[["future"]],type=="fcast.prom" & Category %in% cat),-(type))
+    # }
   },
   options = list(pageLength = 25),
   # options = list(autoWidth = TRUE),
