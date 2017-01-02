@@ -28,19 +28,39 @@ ui <- dashboardPage(
                     )
               ),
               fluidRow(
-                # box(title = "Summary Of Selected Time Period", collapsible = TRUE,
-                #   tableOutput("GMdeltatable")
-                #     )
                 tabBox(
                   title = "Summary of Selected Time Period (US$M)",
                   # The id lets us use input$tabset1 on the server to find the current tab
                   id = "dashtable_tabs", width = 9,
                   # height = "250px",
                   tabPanel("Summary",
+                           fluidRow(
+                             column(width=12,
+                                    div("This table summarises Kwinana's margin for the selected time period, versus promise, in US$M",
+                                        style="background-color: #ece7f2;")
+                                    )
+                           ),
+                           # h5("This table summarises Kwinana's margin for the selected time period, in US$M"),
+                           br(),
                            tableOutput("dashtable_summary_table")
                            ),
                   tabPanel("Past Performance",
+                           fluidRow(
+                             column(width=12,
+                                    div("Actual results from start of selected time period to date, by category:",
+                                        style="background-color: #ece7f2;font-weight: bold;")
+                             )
+                           ),
+                           # strong("Actual results from start of selected time period to date, by category:"),
                            DT::dataTableOutput("dashtable_past_table"),
+                           br(), br(),
+                           fluidRow(
+                             column(width=12,
+                                    div("Detailed view of results. Select rows in the table above to filter categories:",
+                                        style="background-color: #ece7f2;font-weight: bold;")
+                             )
+                           ),
+                           # strong("Detailed view of results. Select rows in the table above to filter categories:"),
                            br(),
                            DT::dataTableOutput("dashtable_past_table_details")
                            ),
@@ -52,12 +72,27 @@ ui <- dashboardPage(
                                        selected = 1)
                            ),
                            column(width=3,
-                             selectInput("dashtable_future_select_zeros", label = "Show Items With No Impact?:",
+                             selectInput("dashtable_future_select_zeros", label = "Show Items With No Impact ?:",
                                          choices = list("No" = 1, "Yes" = 2),
                                          selected = 1)
                            )
                            ),
+                           fluidRow(
+                             column(width=12,
+                                    div("Prediction of future performance in selected time period, by category:",
+                                        style="background-color: #ece7f2;font-weight: bold;")
+                             )
+                           ),
+                           # strong("Prediction of future performance in selected time period, by category:"),
                            DT::dataTableOutput("dashtable_future_table"),
+                           br(), br(),
+                           fluidRow(
+                             column(width=12,
+                                    div("Detailed view of predictions. Select rows in the table above to filter categories:",
+                                        style="background-color: #ece7f2;font-weight: bold;")
+                             )
+                           ),
+                           # strong("Detailed view of predictions. Select rows in the table above to filter categories:"),
                            br(),
                            DT::dataTableOutput("dashtable_future_table_details")
                            ),
@@ -65,12 +100,12 @@ ui <- dashboardPage(
                            tableOutput("plot_clickedpoints")
                            )
                     )
-              ),
-              fluidRow(
-                box(title = "Month details", collapsible = TRUE,
-                    "No Month Selected"
-                    )
               )
+              # fluidRow(
+              #   box(title = "Month details", collapsible = TRUE,
+              #       "No Month Selected"
+              #       )
+              # )
               # fluidRow(
               #   box(tableOutput("plot_clickedpoints")
               #       )
@@ -89,49 +124,43 @@ server <- function(input, output){
   output$GMpermonth <- renderPlot(ggplot(filter(dashgmpermonth, variable=="actualgm" | variable == "fcastgm" | variable=="promgm"),aes(month,value))
         +geom_line(aes(color=variable))+geom_point(aes(color=variable)))
 
-  output$GMpermonthcum <- renderPlot(ggplot(filter(dashgmpermonth, variable=="actualgm" | variable == "fcastgm" | variable=="promgm"),aes(month,value))
+  output$GMpermonthcum <- renderPlot(ggplot(filter(dashgmcum, variable=="actualgm" | variable == "fcastgm" | variable=="promgm"),aes(month,value))
                                   +geom_line(aes(color=variable))+geom_point(aes(color=variable)))
 
   output$dashtable_summary_table <- renderTable(dashtable[["summary"]])
   
   output$dashtable_past_table <- DT::renderDataTable({
-    # if(input$dashtable_past_select==1){
-      dashtable[["pastbycat"]]
-    # }else{
-    # select(dashtable[["past"]],-(activity))
+      rbind(dashtable[["pastbycat"]],c("TOTAL",colSums(select(dashtable[["pastbycat"]],-(Category)))))
+      # dashtable[["pastbycat"]]
     },
-    options = list(dom = "t"),
+    options = list(dom = "t",pageLength = 100),
     # options = list(autoWidth = TRUE),
     rownames = FALSE
     )
 
   output$dashtable_past_table_details <- DT::renderDataTable({
     if(is.null(input$dashtable_past_table_rows_selected)){
-      select(dashtable[["past"]],-(activity))
+      table.data <- select(dashtable[["past"]],-(activity))
     }else{
       cat <- dashtable[["pastbycat"]][input$dashtable_past_table_rows_selected,"Category"]
-      filter(select(dashtable[["past"]],-(activity)),Category %in% cat)
+      table.data <- filter(select(dashtable[["past"]],-(activity)),Category %in% cat)
     }
+    rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-(Category),-(Title)))))
   },
-  options = list(pageLength = 25),
+  options = list(pageLength = 100),
   # options = list(autoWidth = TRUE),
   rownames = FALSE
   )
   
   output$dashtable_future_table <- DT::renderDataTable({
+    table.data.cat <- select(filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][
+      as.numeric(input$dashtable_future_select)]),-(type))
     # browser()
-    select(filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][as.numeric(
-      input$dashtable_future_select)]),-(type))
-    # if(input$dashtable_future_select==1){
-    #   type <- "fcastgm"
-    #   select(filter(dashtable[["futurebycat"]],type=="fcastgm"),-(type))
-    # }else if(input$dashtable_future_select==2){
-    #   select(filter(dashtable[["futurebycat"]],type=="promgm"),-(type))
-    # }else if(input$dashtable_future_select==3){
-    #   select(filter(dashtable[["futurebycat"]],type=="fcast.prom"),-(type))
-    # }
+    rbind(table.data.cat,c("TOTAL",colSums(select(table.data.cat,-(Category)))))
+    # return(table.data.cat)
+    # browser()
   },
-  options = list(dom = "t"),
+  options = list(dom = "t",pageLength = 100),
   rownames = FALSE
   )
   
@@ -159,13 +188,15 @@ server <- function(input, output){
     # browser()
     table.data <- rbind(filter(dashtable[["future"]], type != "fcast.prom")[rowidx,],
                         filter(dashtable[["future"]], type == "fcast.prom")[rowidxdeltas,])
-    table.data <- arrange(table.data,desc(Total),Title)
+    table.data <- arrange(table.data,desc(Total),Category,Title)
     # browser()    
     
-    select(filter(table.data,type==dashtable[["future_types"]][
-        as.numeric(input$dashtable_future_select)] & Category %in% futurecat()),-(type))
+    table.data <- select(filter(table.data,type==dashtable[["future_types"]][
+                  as.numeric(input$dashtable_future_select)] & Category %in% futurecat()),-(type))
+    # browser()
+    rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-(Category),-(Title)))))
     },
-  options = list(pageLength = 25),
+  options = list(pageLength = 100),
   # options = list(autoWidth = TRUE),
   rownames = FALSE
   )

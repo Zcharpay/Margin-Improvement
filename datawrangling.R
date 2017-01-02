@@ -228,19 +228,26 @@ dashgmpermonth_acty <- transform(dashgmpermonth_acty, act.fcast = actualgm - fca
 mthwithactuals <- gmactuals$month == dashgmdeltamonth$month
 collookback <- filter(dcast(dashgmdeltamonth[mthwithactuals,],variable ~ month),
                       variable == "actualgm" | variable == "fcastgm" | variable == "promgm")
-collookback$Realised <- rowSums(as.matrix(select(collookback,-(variable))))
+collookback$Realised.to.date <- rowSums(as.matrix(select(collookback,-(variable))))
 collookfwd <- filter(dashgmdeltamonth[!mthwithactuals,],
                      variable == "actualgm" | variable == "fcastgm" | variable == "promgm")
 collookfwd$year <- year(collookfwd$month)
 collookfwd <- group_by(collookfwd, variable, year) %>% summarise(sum = sum(value)) %>% ungroup
 collookfwd <- dcast(collookfwd, variable ~ year, value.var = "sum")
-dashtable <- list(summary = merge(select(collookback,variable,Realised), collookfwd, 
+dashtable <- list(summary = merge(select(collookback,variable,Realised.to.date), collookfwd, 
                                   by = "variable", all = TRUE, sort = FALSE))
 dashtable[["summary"]]$variable <- sapply(dashtable[["summary"]]$variable,as.character)
 dashtable[["summary"]][match(dashtable[["summary"]]$variable,
                              c("promgm","fcastgm","actualgm")),"variable"] <- c("Promise","Forecast","Actual")
 dashtable[["summary"]] <- dashtable[["summary"]][match(c("Promise","Forecast","Actual")
                                                        ,dashtable[["summary"]]$variable),]
+# filter(dashtable[["summary"]],variable=="Forecast") - filter(dashtable[["summary"]],variable=="Promise")
+# dashtable[["summary_order"]] <-  match(dashtable[["summary"]]$variable,c("Promise","Forecast","Actual"))
+dashtable[["summary"]][2,-1] <- dashtable[["summary"]][2,-1] - dashtable[["summary"]][1,-1]
+dashtable[["summary"]][3,-1] <- dashtable[["summary"]][3,-1] - dashtable[["summary"]][1,-1]
+dashtable[["summary"]] <- dashtable[["summary"]][-1,]
+dashtable[["summary"]][,-1] <- round(dashtable[["summary"]][,-1],1)
+colnames(dashtable[["summary"]])[1] <- ""
 
 dashtable[["past_whichmths"]] <- as.logical(rowSums(mapply(FUN = function(x,y){x == y},gmactuals$month,
                                                 MoreArgs = list(dashgmpermonth_acty$month))))
@@ -258,7 +265,7 @@ colorder <- c(1,match(c("Category","Title"),names(dashtable[["past"]])),2:(ncol(
 dashtable[["past"]] <- dashtable[["past"]][,colorder]
 colnames(dashtable[["past"]])[-1:-3] <- c("Actual","Forecast","Promise","Act.to.Fcast","Fcast.to.Prom","Act.to.Prom")
 dashtable[["past"]][-(1:3)] <- round(dashtable[["past"]][-(1:3)],1)
-dashtable[["past"]] <- arrange(dashtable[["past"]],desc(Act.to.Prom),Title)
+dashtable[["past"]] <- arrange(dashtable[["past"]],desc(Act.to.Prom),Category,Title)
 
 dashtable[["pastbycat"]] <- melt(select(dashtable[["past"]],-(activity),-(Title)), id.vars = "Category")
 dashtable[["pastbycat"]] <- dashtable[["pastbycat"]] %>% group_by(Category, variable) %>% summarise(sum = sum(value)) %>%
