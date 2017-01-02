@@ -11,7 +11,8 @@ ui <- dashboardPage(
       menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
       menuItem("Widgets", tabName = "widgets", icon = icon("th"))
     ),
-    sliderInput("slider2", "Number of observations:", min=1, max=100, value=c(25,75))
+    sliderInput("dashslider_date", "Date Filter:", min=as.Date("2017-01-01"), max=as.Date("2019-12-01"),
+                value=c(as.Date("2017-01-01"),as.Date("2019-12-01")), step = NULL, timeFormat = "%b-%y")
   ),
   dashboardBody(
     tabItems(
@@ -31,7 +32,7 @@ ui <- dashboardPage(
                 #   tableOutput("GMdeltatable")
                 #     )
                 tabBox(
-                  title = "Summary of Selected Time Period",
+                  title = "Summary of Selected Time Period (US$M)",
                   # The id lets us use input$tabset1 on the server to find the current tab
                   id = "dashtable_tabs", width = 9,
                   # height = "250px",
@@ -44,9 +45,18 @@ ui <- dashboardPage(
                            DT::dataTableOutput("dashtable_past_table_details")
                            ),
                   tabPanel("Future",
-                           selectInput("dashtable_future_select", label = "Select:",
+                           fluidRow(
+                           column(width=3,
+                             selectInput("dashtable_future_select", label = "Select Data to View:",
                                        choices = list("Forecast" = 1, "Promise" = 2, "Delta" = 3),
-                                       selected = 1),
+                                       selected = 1)
+                           ),
+                           column(width=3,
+                             selectInput("dashtable_future_select_zeros", label = "Show Items With No Impact?:",
+                                         choices = list("No" = 1, "Yes" = 2),
+                                         selected = 1)
+                           )
+                           ),
                            DT::dataTableOutput("dashtable_future_table"),
                            br(),
                            DT::dataTableOutput("dashtable_future_table_details")
@@ -134,26 +144,27 @@ server <- function(input, output){
     }
     })
   
-  # observeEvent(futurecat,print(futurecat()))
+  # observeEvent(futurecat(),print(futurecat()))
   
   output$dashtable_future_table_details <- DT::renderDataTable({
-    # if(is.null(input$dashtable_past_table_rows_selected)){
-    #   cat <- unique(dashtable[["future"]]$Category)
-    # }else{
-    #   cat <- filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][
-    #     as.numeric(input$dashtable_future_select)])[input$dashtable_future_table_rows_selected,"Category"]
-    # }
-    # print(cat)
-    select(filter(dashtable[["future"]],type==dashtable[["future_types"]][
+    if(input$dashtable_future_select_zeros==1){
+      rowidx <- !apply(select(filter(dashtable[["future"]], type != "fcast.prom"),-(type),-(Category),
+                              -(Title),-(Total)),1,FUN=function(x){all(x==0)})
+      # table.data <- select(dashtable[["future"]],-(type))
+    }else if(input$dashtable_future_select_zeros==2){
+      rowidx <- rep(TRUE,nrow(filter(dashtable[["future"]], type != "fcast.prom")))
+    }
+    rowidxdeltas <- apply(matrix(rowidx, ncol=2),1,any)
+    # table.data <- dashtable[["future"]]
+    # browser()
+    table.data <- rbind(filter(dashtable[["future"]], type != "fcast.prom")[rowidx,],
+                        filter(dashtable[["future"]], type == "fcast.prom")[rowidxdeltas,])
+    table.data <- arrange(table.data,desc(Total),Title)
+    # browser()    
+    
+    select(filter(table.data,type==dashtable[["future_types"]][
         as.numeric(input$dashtable_future_select)] & Category %in% futurecat()),-(type))
-    # if(input$dashtable_future_select==1){
-    #   select(filter(dashtable[["future"]],type=="fcastgm" & Category %in% cat),-(type))
-    # }else if(input$dashtable_future_select==2){
-    #   select(filter(dashtable[["future"]],type=="promgm" & Category %in% cat),-(type))
-    # }else if(input$dashtable_future_select==3){
-    #   select(filter(dashtable[["future"]],type=="fcast.prom" & Category %in% cat),-(type))
-    # }
-  },
+    },
   options = list(pageLength = 25),
   # options = list(autoWidth = TRUE),
   rownames = FALSE

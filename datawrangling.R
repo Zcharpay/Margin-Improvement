@@ -284,24 +284,8 @@ colnames(dashtable[["future"]]) <- sub("variable","type",colnames(dashtable[["fu
 dashtable[["futurebycat"]] <- dashtable[["future"]] %>% melt(id.vars = c("type","Category","Title")) %>%
                                   group_by(type,Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
                                   dcast(type + Category ~ variable, value.var = "sum")
+dashtable[["future"]]$Total <- rowSums(select(dashtable[["future"]],-(type),-(Category),-(Title)))
+dashtable[["futurebycat"]]$Total <- rowSums(select(dashtable[["futurebycat"]],-(type),-(Category)))
+dashtable[["futurebycat"]] <- arrange(dashtable[["futurebycat"]],desc(Total),Category)
 dashtable[["future_types"]] <- c("fcastgm","promgm","fcast.prom")
-# dashtable[["future_fcast"]] <- dashtable[["future"]] %>% filter(variable == "fcastgm") %>% 
-#                                 select(-(activity),-(variable)) %>% dcast(Category + Title ~ year, value.var="sum")
-# dashtable[["future_prom"]] <- dashtable[["future"]] %>% filter(variable == "promgm") %>% 
-#                                 select(-(activity),-(variable)) %>% dcast(Category + Title ~ year, value.var="sum")
-# dashtable[["future_delta"]] <- dashtable[["future"]] %>% filter(variable == "fcast.prom") %>% 
-#                                 select(-(activity),-(variable)) %>% dcast(Category + Title ~ year, value.var="sum")
-# dashtable[["future_fcastbycat"]] <- dashtable[["future_fcast"]] %>% melt(id.vars = c("Category","Title")) %>%
-#                                 group_by(Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
-#                                 dcast(Category ~ variable, value.var = "sum")
-# dashtable[["future_prombycat"]] <- dashtable[["future_prom"]] %>% melt(id.vars = c("Category","Title")) %>%
-#                                 group_by(Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
-#                                 dcast(Category ~ variable, value.var = "sum")
-# dashtable[["future_deltabycat"]] <- dashtable[["future_delta"]] %>% melt(id.vars = c("Category","Title")) %>%
-#                                 group_by(Category,variable) %>% summarise(sum = sum(value)) %>% ungroup %>%
-#                                 dcast(Category ~ variable, value.var = "sum")
-# colorder <- c(1,match(c("Category","Title"),names(dashtable[["future"]])),2:(ncol(dashtable[["future"]])-2))
-# dashtable[["future"]] <- dashtable[["future"]][,colorder]
-# colnames(dashtable[["future"]])[-1:-3] <- c("Forecast","Promise","Fcast.to.Prom")
-# dashtable[["future"]] <- arrange(dashtable[["future"]],desc(Fcast.to.Prom),Title)
 
