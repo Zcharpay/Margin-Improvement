@@ -4,7 +4,8 @@ library(lubridate)
 library(reshape2)
 library(ggplot2)
 
-filename <- "Test tracker structure7.xlsx"
+options(stringsAsFactors = FALSE)
+filename <- "Test tracker structure10.xlsx"
 
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
 prices <- read.xlsx(file=filename,sheetName = "Prices",stringsAsFactors=FALSE,header=TRUE)
