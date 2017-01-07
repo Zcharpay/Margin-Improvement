@@ -55,9 +55,11 @@ rownames(volactuals) <- paste(format(actuals$month,"%b-%y"),actuals$activity.id,
 gmadj <- read.xlsx(file=filename,sheetName = "GM Manual Adjustments",stringsAsFactors=FALSE,header=TRUE)
 # This will remove any column/row that is entirely NA values (bad excel behaviour)
 gmadj <- gmadj[rowSums(is.na(gmadj))<ncol(gmadj),colSums(is.na(gmadj))<nrow(gmadj)]
-rnames <- as.character(gmadj[,1]); cnames <- colnames(gmadj)[-1]
-gmadj <- as.matrix(gmadj[,-1],nrow=nrow(gmadj))
-colnames(gmadj) <- cnames; rownames(gmadj) <- rnames
+gmadj <- rename(gmadj, id = GMmanualadj)
+rownames <- gmadj$id
+# rnames <- as.character(gmadj[,1]); cnames <- colnames(gmadj)[-1]
+# gmadj <- as.matrix(gmadj[,-1],nrow=nrow(gmadj))
+# colnames(gmadj) <- cnames; rownames(gmadj) <- rnames
 
 ## Read activity phasing data from the excel workbook, tidy up, convert to numeric matrix
 activityphasing <- read.xlsx(file=filename,sheetName = "Activity Phasing",stringsAsFactors=FALSE,header=TRUE)
@@ -109,6 +111,9 @@ scenariodetail$basevolid <- scenarios[scenariodetail$scenario,"base.vol.id"]
 # Process information for the activities with volume balance entries
 subsetscenario <- scenariodetail[grepl("^VA",scenariodetail$activity.id),]
 
+default.volbase <- filter(scenarioconfig,type=="latest.forecast")$base.vol.id
+default.prices <- filter(scenarioconfig,type=="latest.forecast")$base.price.id
+
 volumes <- list()
 volumes$total <- data.frame(volbasecases) %>% mutate (id = rownames(volbasecases))
 volumes$delta <- data.frame(volactcases) %>% mutate (id = rownames(volactcases))
@@ -133,6 +138,13 @@ volumes$total.scen <- (select(volumes$delta.scen,-id)[temp.join$id,] +
                           rbind(volumes$total.scen,.)    
 rownames(volumes$total.scen) <- volumes$total.scen$id
 
+len <- nrow(volumes$delta)
+volumes$total <- (as.matrix(select(volumes$delta,-id)) + 
+                    as.matrix(select(volumes$total[rep(default.volbase,times=len),],-id))) %>% data.frame %>%
+                  mutate(id = volumes$delta$'id') %>%
+                  rbind(volumes$total,.)
+rownames(volumes$total) <- volumes$total$id
+
 # volscenariodetail <- with(subsetscenario,volbasecases[basevolid,]+volactcases[activity.id,])
 # rownames(volscenariodetail) <- subsetscenario$activity.id
 # volscenario_base <- volbasecases[scenarios$base.vol.id,]
@@ -145,6 +157,8 @@ rownames(volumes$total.scen) <- volumes$total.scen$id
 # subsetphasing <- activityphasing[grepl("^VA",rownames(activityphasing)),]
 scenariophasing <- activityphasing[scenariodetail$activity.id,]
 rownames(scenariophasing) <- rownames(scenariodetail)
+scenariophasing <- data.frame(scenariophasing,id=scenariodetail$scenariodetail)
+activityphasing <- data.frame(activityphasing,id=rownames(activityphasing))
 
 ################## Output data ##############################
 ## Calculate the various outputs required
@@ -171,12 +185,46 @@ money$inout.total.scen <- rbind(money$inout.total.scen,
                                     as.matrix(select(volumes$total.scen[temp.join$id,],-id))*
                                       prices[scenarioconfig[temp.join$id,"base.price.id"],]*1000/1e6)
 
-default.volbase <- filter(scenarioconfig,type=="latest.forecast")$base.vol.id
-default.prices <- filter(scenarioconfig,type=="latest.forecast")$base.price.id
+
 money$inout.delta <- (select(volumes$delta,-id)*prices[rep(default.prices,nrow(volumes$delta)),]*1000/1e6) %>%
                       mutate(id = volumes$delta$'id')
+temp.lookup <- grepl("^VA",volumes$total$id)
+money$inout.total <- select(volumes$total[temp.lookup,],-id)*prices[rep(default.prices,times=sum(temp.lookup)),]*1000/1e6
+money$inout.total$id <- volumes$'total'$'id'[temp.lookup]
+money$default.base.gm <- rowSums(select(volumes$total[default.volbase,],-id)*prices[default.prices,]*(1000/1e6)
+                                 *t(volstruc))
+
+money$inout.base.scen <- (select(volumes$total[scenarios$base.vol.id,],-id) * prices[scenarios$base.price.id,]*1000/1e6) %>%
+                        data.frame %>% mutate(id = scenarios$'id')
+volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.base.scen)),nrow=nrow(money$inout.base.scen),byrow=TRUE)
+money$gm.base.scen <- rowSums(select(money$inout.base.scen,-id)*volstruc.mat) %>% 
+                      data.frame(gm=., id=scenarios$'id', row.names=scenarios$'id')
 
 volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.delta.scen)),nrow=nrow(money$inout.delta.scen),byrow=TRUE)
 money$gm.month <- rowSums(money$inout.delta.scen*volstruc.mat) %>% data.frame
 colnames(money$gm.month) <- "gm.vol.delta"; money$gm.month$id <- rownames(money$gm.month)
 money$gm.month$gm.vol <- rowSums(money$inout.total.scen*volstruc.mat)
+
+volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.delta)),nrow=nrow(money$inout.delta),byrow=TRUE)
+money$gm.month <- rbind(money$gm.month,
+                        data.frame(gm.vol.delta=rowSums(select(money$inout.delta,-id)*volstruc.mat),
+                                   id=money$inout.delta$id, 
+                                   gm.vol=rowSums(select(money$inout.total,-id)*volstruc.mat)))
+money$gm.month <- rbind(money$gm.month,
+                        data.frame(gm.vol.delta=gmadj$GM.impact.monthly,
+                                   id=gmadj$id, 
+                                   gm.vol=gmadj$GM.impact.monthly + money$default.base.gm, row.names = gmadj$id))
+temp.join <- inner_join(scenariodetail,gmadj,by=c("activity.id" = "id"))
+money$gm.month <- rbind(money$gm.month,
+                        data.frame(gm.vol.delta=temp.join$GM.impact.monthly,
+                                   id=temp.join$scenariodetail,
+                                   gm.vol=temp.join$GM.impact.monthly + money$gm.base.scen[temp.join$scenario,"gm"],
+                                   row.names = temp.join$'scenariodetail'))
+
+temp.join <- inner_join(select(money$gm.month,-gm.vol),scenariophasing,by="id")
+money$gm.profile.delta <- apply(select(temp.join,-id,-gm.vol.delta),2,FUN = function(x){x*temp.join$gm.vol.delta}) %>%
+                          data.frame %>% mutate(id = temp.join$'id')
+temp.join <- inner_join(select(money$gm.month,-gm.vol),activityphasing,by="id")
+money$gm.profile.delta <- apply(select(temp.join,-id,-gm.vol.delta),2,FUN = function(x){x*temp.join$gm.vol.delta}) %>%
+                          data.frame %>% mutate(id = temp.join$'id') %>%
+                          rbind(money$gm.profile.delta,.)
