@@ -119,30 +119,30 @@ volumes$total <- data.frame(volbasecases) %>% mutate (id = rownames(volbasecases
 volumes$delta <- data.frame(volactcases) %>% mutate (id = rownames(volactcases))
 rownames(volumes$total) <- volumes$total$id; rownames(volumes$delta) <- volumes$delta$id
 volumes$delta.scen <- volumes$delta[match(subsetscenario$activity.id,volumes$delta$id),] %>%
-                          mutate(id = subsetscenario$'scenariodetail', scen = subsetscenario$scenario)
+                    mutate(id = subsetscenario$'scenariodetail', scen = subsetscenario$scenario)
 volumes$delta.scen <- aggregate(select(volumes$delta.scen,-id,-scen),by=list(volumes$delta.scen$scen),FUN=sum) %>%
-                      rename(id = Group.1) %>% rbind(select(volumes$delta.scen,-scen),.)
+                    rename(id = Group.1) %>% rbind(select(volumes$delta.scen,-scen),.)
 rownames(volumes$delta.scen) <- volumes$delta.scen$id
 # volumes$total.scen <- volumes$delta.scen[grepl("^SC(.*)-",volumes$delta.scen$id),]
 
 volumes$total.scen.comps <- volumes$delta.scen$id[grepl("^SC(.*)-",volumes$delta.scen$id)]
 volumes$total.scen <- as.matrix(select(volumes$total[subsetscenario[volumes$total.scen.comps,"basevolid"],],-id))
-                        # mutate(id = volumes$total.scen.comps)
+# mutate(id = volumes$total.scen.comps)
 volumes$total.scen <- (volumes$total.scen + as.matrix(select(volumes$delta.scen[volumes$total.scen.comps,],-id))) %>%
-                        data.frame %>% mutate(id = volumes$total.scen.comps) 
-                                              # scen = scenariodetail[volumes$total.scen.comps,"scenario"])
+                    data.frame %>% mutate(id = volumes$total.scen.comps) 
+# scen = scenariodetail[volumes$total.scen.comps,"scenario"])
 temp.join <- inner_join(volumes$delta.scen,scenarioconfig,by="id")
 volumes$total.scen <- (select(volumes$delta.scen,-id)[temp.join$id,] + 
-                         select(volumes$total[temp.join$base.vol.id,],-id)) %>%
-                          cbind(.,id=temp.join$id) %>% 
-                          rbind(volumes$total.scen,.)    
+                    select(volumes$total[temp.join$base.vol.id,],-id)) %>%
+                    cbind(.,id=temp.join$id) %>% 
+                    rbind(volumes$total.scen,.)    
 rownames(volumes$total.scen) <- volumes$total.scen$id
 
 len <- nrow(volumes$delta)
 volumes$total <- (as.matrix(select(volumes$delta,-id)) + 
                     as.matrix(select(volumes$total[rep(default.volbase,times=len),],-id))) %>% data.frame %>%
-                  mutate(id = volumes$delta$'id') %>%
-                  rbind(volumes$total,.)
+                    mutate(id = volumes$delta$'id') %>%
+                    rbind(volumes$total,.)
 rownames(volumes$total) <- volumes$total$id
 
 # volscenariodetail <- with(subsetscenario,volbasecases[basevolid,]+volactcases[activity.id,])
@@ -171,23 +171,23 @@ activityphasing <- data.frame(activityphasing,id=rownames(activityphasing))
 money <- list()
 temp.join <- inner_join(volumes$delta.scen, scenariodetail, by = c("id" = "scenariodetail"))
 money$inout.delta.scen <- as.matrix(select(volumes$delta.scen[temp.join$id,],-id))*
-                                      prices[scenarioconfig[temp.join$scenario,"base.price.id"],]*1000/1e6
+                    prices[scenarioconfig[temp.join$scenario,"base.price.id"],]*1000/1e6
 temp.join <- inner_join(volumes$delta.scen, scenarioconfig, by = "id")
 money$inout.delta.scen <- rbind(money$inout.delta.scen,
-                                    as.matrix(select(volumes$delta.scen[temp.join$id,],-id))*
-                                    prices[scenarioconfig[temp.join$id,"base.price.id"],]*1000/1e6)
+                                as.matrix(select(volumes$delta.scen[temp.join$id,],-id))*
+                                                    prices[scenarioconfig[temp.join$id,"base.price.id"],]*1000/1e6)
 
 temp.join <- inner_join(volumes$total.scen, scenariodetail, by = c("id" = "scenariodetail"))
 money$inout.total.scen <- as.matrix(select(volumes$total.scen[temp.join$id,],-id))*
-                                      prices[scenarioconfig[temp.join$scenario,"base.price.id"],]*1000/1e6
+                    prices[scenarioconfig[temp.join$scenario,"base.price.id"],]*1000/1e6
 temp.join <- inner_join(volumes$delta.scen, scenarioconfig, by = "id")
 money$inout.total.scen <- rbind(money$inout.total.scen,
-                                    as.matrix(select(volumes$total.scen[temp.join$id,],-id))*
-                                      prices[scenarioconfig[temp.join$id,"base.price.id"],]*1000/1e6)
+                                as.matrix(select(volumes$total.scen[temp.join$id,],-id))*
+                                                    prices[scenarioconfig[temp.join$id,"base.price.id"],]*1000/1e6)
 
 
 money$inout.delta <- (select(volumes$delta,-id)*prices[rep(default.prices,nrow(volumes$delta)),]*1000/1e6) %>%
-                      mutate(id = volumes$delta$'id')
+                    mutate(id = volumes$delta$'id')
 temp.lookup <- grepl("^VA",volumes$total$id)
 money$inout.total <- select(volumes$total[temp.lookup,],-id)*prices[rep(default.prices,times=sum(temp.lookup)),]*1000/1e6
 money$inout.total$id <- volumes$'total'$'id'[temp.lookup]
@@ -195,36 +195,51 @@ money$default.base.gm <- rowSums(select(volumes$total[default.volbase,],-id)*pri
                                  *t(volstruc))
 
 money$inout.base.scen <- (select(volumes$total[scenarios$base.vol.id,],-id) * prices[scenarios$base.price.id,]*1000/1e6) %>%
-                        data.frame %>% mutate(id = scenarios$'id')
+                    data.frame %>% mutate(id = scenarios$'id')
 volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.base.scen)),nrow=nrow(money$inout.base.scen),byrow=TRUE)
 money$gm.base.scen <- rowSums(select(money$inout.base.scen,-id)*volstruc.mat) %>% 
-                      data.frame(gm=., id=scenarios$'id', row.names=scenarios$'id')
+                    data.frame(gm=., id=scenarios$'id', row.names=scenarios$'id')
 
 volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.delta.scen)),nrow=nrow(money$inout.delta.scen),byrow=TRUE)
 money$gm.month <- rowSums(money$inout.delta.scen*volstruc.mat) %>% data.frame
-colnames(money$gm.month) <- "gm.vol.delta"; money$gm.month$id <- rownames(money$gm.month)
-money$gm.month$gm.vol <- rowSums(money$inout.total.scen*volstruc.mat)
+colnames(money$gm.month) <- "gm.delta"; money$gm.month$id <- rownames(money$gm.month)
+money$gm.month$gm <- rowSums(money$inout.total.scen*volstruc.mat)
 
 volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.delta)),nrow=nrow(money$inout.delta),byrow=TRUE)
 money$gm.month <- rbind(money$gm.month,
-                        data.frame(gm.vol.delta=rowSums(select(money$inout.delta,-id)*volstruc.mat),
+                        data.frame(gm.delta=rowSums(select(money$inout.delta,-id)*volstruc.mat),
                                    id=money$inout.delta$id, 
-                                   gm.vol=rowSums(select(money$inout.total,-id)*volstruc.mat)))
+                                   gm=rowSums(select(money$inout.total,-id)*volstruc.mat)))
 money$gm.month <- rbind(money$gm.month,
-                        data.frame(gm.vol.delta=gmadj$GM.impact.monthly,
+                        data.frame(gm.delta=gmadj$GM.impact.monthly,
                                    id=gmadj$id, 
-                                   gm.vol=gmadj$GM.impact.monthly + money$default.base.gm, row.names = gmadj$id))
+                                   gm=gmadj$GM.impact.monthly + money$default.base.gm, row.names = gmadj$id))
 temp.join <- inner_join(scenariodetail,gmadj,by=c("activity.id" = "id"))
 money$gm.month <- rbind(money$gm.month,
-                        data.frame(gm.vol.delta=temp.join$GM.impact.monthly,
+                        data.frame(gm.delta=temp.join$GM.impact.monthly,
                                    id=temp.join$scenariodetail,
-                                   gm.vol=temp.join$GM.impact.monthly + money$gm.base.scen[temp.join$scenario,"gm"],
+                                   gm=temp.join$GM.impact.monthly + money$gm.base.scen[temp.join$scenario,"gm"],
                                    row.names = temp.join$'scenariodetail'))
 
-temp.join <- inner_join(select(money$gm.month,-gm.vol),scenariophasing,by="id")
-money$gm.profile.delta <- apply(select(temp.join,-id,-gm.vol.delta),2,FUN = function(x){x*temp.join$gm.vol.delta}) %>%
-                          data.frame %>% mutate(id = temp.join$'id')
-temp.join <- inner_join(select(money$gm.month,-gm.vol),activityphasing,by="id")
-money$gm.profile.delta <- apply(select(temp.join,-id,-gm.vol.delta),2,FUN = function(x){x*temp.join$gm.vol.delta}) %>%
-                          data.frame %>% mutate(id = temp.join$'id') %>%
-                          rbind(money$gm.profile.delta,.)
+
+# Phasing of delta GM
+temp.join <- inner_join(select(money$gm.month,-gm),scenariophasing,by="id")
+money$gm.profile.delta <- apply(select(temp.join,-id,-gm.delta),2,FUN = function(x){x*temp.join$gm.delta}) %>%
+                    data.frame %>% mutate(id = temp.join$'id')
+temp.join <- inner_join(select(money$gm.month,-gm),activityphasing,by="id")
+money$gm.profile.delta <- apply(select(temp.join,-id,-gm.delta),2,FUN = function(x){x*temp.join$gm.delta}) %>%
+                    data.frame %>% mutate(id = temp.join$'id') %>%
+                    rbind(money$gm.profile.delta,.)
+money$gm.profile.delta.cum <- t(apply(select(money$gm.profile.delta,-id),1,cumsum)) %>%
+                    data.frame %>% mutate(id = money$gm.profile.delta$'id')
+
+# Phasing of GM
+temp.join <- inner_join(select(money$gm.month,-gm.delta),scenariophasing,by="id")
+money$gm.profile <- apply(select(temp.join,-id,-gm),2,FUN = function(x){x*temp.join$gm}) %>%
+                    data.frame %>% mutate(id = temp.join$'id')
+temp.join <- inner_join(select(money$gm.month,-gm.delta),activityphasing,by="id")
+money$gm.profile <- apply(select(temp.join,-id,-gm),2,FUN = function(x){x*temp.join$gm}) %>%
+                    data.frame %>% mutate(id = temp.join$'id') %>%
+                    rbind(money$gm.profile,.)
+money$gm.profile.cum <- t(apply(select(money$gm.profile,-id),1,cumsum)) %>%
+                    data.frame %>% mutate(id = money$gm.profile$'id')
