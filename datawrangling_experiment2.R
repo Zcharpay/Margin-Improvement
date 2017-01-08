@@ -8,6 +8,7 @@ library(tidyr)
 options(stringsAsFactors = FALSE)
 filename <- "Test tracker structure10.xlsx"
 
+################## Read Inputs from File ##############################
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
 prices <- read.xlsx(file=filename,sheetName = "Prices",stringsAsFactors=FALSE,header=TRUE)
 # This will remove any column/row that is entirely NA values (bad excel behaviour)
@@ -48,8 +49,9 @@ actuals <- read.xlsx(file=filename,sheetName = "Actuals",stringsAsFactors=FALSE,
 actuals <- actuals[rowSums(is.na(actuals))<ncol(actuals),colSums(is.na(actuals))<nrow(actuals)]
 actuals <- actuals[grepl("^VA|^MA",actuals$activity.id),]
 actuals[is.na(actuals)] <- 0
-volactuals <- as.matrix(select(actuals,-(month),-(activity.id)))
-rownames(volactuals) <- paste(format(actuals$month,"%b-%y"),actuals$activity.id,sep="|")
+actuals$id <- paste(format(actuals$month,"%b-%y"),actuals$activity.id,sep="|")
+volactuals <- select(actuals,-(month),-(activity.id),-id,-man.adj)
+# rownames(volactuals) <- paste(format(actuals$month,"%b-%y"),actuals$activity.id,sep="|")
 
 ## Read non-volume-balance GM items from the excel workbook, tidy up, convert to numeric matrix
 gmadj <- read.xlsx(file=filename,sheetName = "GM Manual Adjustments",stringsAsFactors=FALSE,header=TRUE)
@@ -77,9 +79,12 @@ colnames(activityphasing) <- format.POSIXct(phasedates,format = "%b-%y")
 metadata <- read.xlsx(file=filename,sheetName = "metadata",stringsAsFactors=FALSE,header=TRUE)
 # This will remove any column/row that is entirely NA values (bad excel behaviour)
 metadata <- metadata[rowSums(is.na(metadata))<ncol(metadata),colSums(is.na(metadata))<nrow(metadata)]
-rnames <- as.character(metadata[,1]); cnames <- tolower(colnames(metadata)[-1])
-metadata <- metadata[,-1]
-colnames(metadata) <- cnames; rownames(metadata) <- rnames
+rnames <- as.character(metadata[,1])
+# cnames <- tolower(colnames(metadata)[-1])
+# metadata <- metadata[,-1]
+metadata <- rename(metadata, id=metadata)
+# colnames(metadata) <- cnames
+rownames(metadata) <- rnames; colnames(metadata) <- tolower(colnames(metadata))
 # # Apart from title and description fields, all fields in this table need to be factors
 # index <- !grepl("title|description",colnames(metadata))
 # metadata[,index] <- lapply(metadata[,index],as.factor)
@@ -145,14 +150,6 @@ volumes$total <- (as.matrix(select(volumes$delta,-id)) +
                     rbind(volumes$total,.)
 rownames(volumes$total) <- volumes$total$id
 
-# volscenariodetail <- with(subsetscenario,volbasecases[basevolid,]+volactcases[activity.id,])
-# rownames(volscenariodetail) <- subsetscenario$activity.id
-# volscenario_base <- volbasecases[scenarios$base.vol.id,]
-# volscenario_activity <- as.matrix(aggregate(volactcases[subsetscenario$activity.id,],list(paste(subsetscenario$scenario,sep="")),sum)[,-1])
-# volscenario <- volscenario_base + volscenario_activity
-# rownames(volscenario) <- rownames(scenarios); rownames(volscenario_base) <- rownames(scenarios)
-# rownames(volscenario_activity) <- rownames(scenarios)
-
 #Process phasing information
 # subsetphasing <- activityphasing[grepl("^VA",rownames(activityphasing)),]
 scenariophasing <- activityphasing[scenariodetail$activity.id,]
@@ -162,12 +159,11 @@ activityphasing <- data.frame(activityphasing,id=rownames(activityphasing))
 
 ################## Output data ##############################
 ## Calculate the various outputs required
-# calculate GM for base cases
-# gmbasecases <- (volbasecases[scenarioconfig$base.vol.id,]*prices[scenarioconfig$base.price.id,])*1000/1e6
-# gmbasecases <- rowSums(gmbasecases[,-1])-gmbasecases[,1]
-# names(gmbasecases) <- rownames(scenarioconfig)
-# scen.tags <- match(volumes$delta$id,subsetscenario$activity.id); scen.tags <- scen.tags[!is.na(scen.tags)]
-# temp.sub <- select(volumes$delta,-id)
+# Monetise the volume balance (inputs and outputs)
+#                   delta.scen = volume deltas, by scenario
+#                   total.scen = volume balance total (i.e. with base case), by scenario
+#                   delta = volumes deltas, by activity
+#                   total = volume balance total, by activity
 money <- list()
 temp.join <- inner_join(volumes$delta.scen, scenariodetail, by = c("id" = "scenariodetail"))
 money$inout.delta.scen <- as.matrix(select(volumes$delta.scen[temp.join$id,],-id))*
@@ -185,20 +181,21 @@ money$inout.total.scen <- rbind(money$inout.total.scen,
                                 as.matrix(select(volumes$total.scen[temp.join$id,],-id))*
                                                     prices[scenarioconfig[temp.join$id,"base.price.id"],]*1000/1e6)
 
-
 money$inout.delta <- (select(volumes$delta,-id)*prices[rep(default.prices,nrow(volumes$delta)),]*1000/1e6) %>%
                     mutate(id = volumes$delta$'id')
 temp.lookup <- grepl("^VA",volumes$total$id)
 money$inout.total <- select(volumes$total[temp.lookup,],-id)*prices[rep(default.prices,times=sum(temp.lookup)),]*1000/1e6
 money$inout.total$id <- volumes$'total'$'id'[temp.lookup]
+
+# Also monetise the base case volumes balances
 money$default.base.gm <- rowSums(select(volumes$total[default.volbase,],-id)*prices[default.prices,]*(1000/1e6)
                                  *t(volstruc))
-
-money$inout.base.scen <- (select(volumes$total[scenarios$base.vol.id,],-id) * prices[scenarios$base.price.id,]*1000/1e6) %>%
-                    data.frame %>% mutate(id = scenarios$'id')
-volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.base.scen)),nrow=nrow(money$inout.base.scen),byrow=TRUE)
-money$gm.base.scen <- rowSums(select(money$inout.base.scen,-id)*volstruc.mat) %>% 
-                    data.frame(gm=., id=scenarios$'id', row.names=scenarios$'id')
+money$inout.base.scenario <- (select(volumes$total[scenarioconfig$base.vol.id,],-id) 
+                              * prices[scenarioconfig$base.price.id,]*1000/1e6) %>%
+                    data.frame %>% mutate(id = scenarioconfig$'id')
+volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.base.scenario)),nrow=nrow(money$inout.base.scenario),byrow=TRUE)
+money$gm.base.scenario <- rowSums(select(money$inout.base.scenario,-id)*volstruc.mat) %>%
+                    data.frame(gm=., id=scenarioconfig$'id', row.names=scenarioconfig$'id')
 
 volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.delta.scen)),nrow=nrow(money$inout.delta.scen),byrow=TRUE)
 money$gm.month <- rowSums(money$inout.delta.scen*volstruc.mat) %>% data.frame
@@ -218,7 +215,7 @@ temp.join <- inner_join(scenariodetail,gmadj,by=c("activity.id" = "id"))
 money$gm.month <- rbind(money$gm.month,
                         data.frame(gm.delta=temp.join$GM.impact.monthly,
                                    id=temp.join$scenariodetail,
-                                   gm=temp.join$GM.impact.monthly + money$gm.base.scen[temp.join$scenario,"gm"],
+                                   gm=temp.join$GM.impact.monthly + money$gm.base.scenario[temp.join$scenario,"gm"],
                                    row.names = temp.join$'scenariodetail'))
 
 
@@ -230,16 +227,213 @@ temp.join <- inner_join(select(money$gm.month,-gm),activityphasing,by="id")
 money$gm.profile.delta <- apply(select(temp.join,-id,-gm.delta),2,FUN = function(x){x*temp.join$gm.delta}) %>%
                     data.frame %>% mutate(id = temp.join$'id') %>%
                     rbind(money$gm.profile.delta,.)
+temp.join <- inner_join(money$gm.profile.delta,scenariodetail,by =c("id" = "scenariodetail"))
+temp.lookup <- which(money$gm.profile.delta$id %in% temp.join$id)
+money$gm.profile.delta <- aggregate(select(money$gm.profile.delta[temp.lookup,],-id),
+                                    list(temp.join$scenario),FUN = sum) %>%
+                    rename(id = Group.1) %>%
+                    rbind(money$gm.profile.delta,.)
 money$gm.profile.delta.cum <- t(apply(select(money$gm.profile.delta,-id),1,cumsum)) %>%
                     data.frame %>% mutate(id = money$gm.profile.delta$'id')
 
 # Phasing of GM
-temp.join <- inner_join(select(money$gm.month,-gm.delta),scenariophasing,by="id")
-money$gm.profile <- apply(select(temp.join,-id,-gm),2,FUN = function(x){x*temp.join$gm}) %>%
+temp.join <- inner_join(select(money$gm.month,-gm),scenariophasing,by="id")
+money$gm.profile <- (apply(select(temp.join,-id,-gm.delta),2,FUN = function(x){x*temp.join$gm}) + 
+                    money$gm.base.scenario[scenariodetail[temp.join$id,"scenario"],"gm"]) %>%
                     data.frame %>% mutate(id = temp.join$'id')
-temp.join <- inner_join(select(money$gm.month,-gm.delta),activityphasing,by="id")
-money$gm.profile <- apply(select(temp.join,-id,-gm),2,FUN = function(x){x*temp.join$gm}) %>%
+temp.join <- inner_join(select(money$gm.month,-gm),activityphasing,by="id")
+money$gm.profile <- (apply(select(temp.join,-id,-gm.delta),2,FUN = function(x){x*temp.join$gm}) + 
+                    money$default.base.gm) %>%
                     data.frame %>% mutate(id = temp.join$'id') %>%
+                    rbind(money$gm.profile,.)
+temp.join <- inner_join(money$gm.profile.delta,scenarioconfig,by="id")
+temp.lookup <- which(money$gm.profile.delta$id %in% temp.join$id)
+money$gm.profile <- (select(money$gm.profile.delta[temp.lookup,],-id) + 
+                    money$gm.base.scenario[temp.join$id,"gm"]) %>%
+                    mutate(id = temp.join$'id') %>%
                     rbind(money$gm.profile,.)
 money$gm.profile.cum <- t(apply(select(money$gm.profile,-id),1,cumsum)) %>%
                     data.frame %>% mutate(id = money$gm.profile$'id')
+
+# Calculate GM for actuals
+money$inout.actual <- (volactuals*prices[scenarioconfig[rep("Actual",times=nrow(volactuals)),"base.price.id"],])*1000/1e6
+volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.actual)),nrow=nrow(money$inout.actual),byrow=TRUE)
+money$gm.actual <- rowSums(money$inout.actual*volstruc.mat) %>% 
+                    data.frame(gm.delta = .,
+                               gm = . + money$gm.base.scenario["Actual","gm"],
+                               id = actuals$'id',
+                               month = actuals$'month',
+                               activ = actuals$'activity.id')
+rownames(money$gm.actual) <- money$gm.actual$id
+temp.join <- inner_join(money$gm.actual[grepl("^MA",money$gm.actual$activ),], actuals, by="id")
+money$gm.actual[temp.join$id,"gm.delta"] <- temp.join$man.adj
+money$gm.actual <- mutate(money$gm.actual, gm = gm.delta + money$gm.base.scenario["Actual","gm"])
+money$gm.actual <- group_by(money$gm.actual,activ) %>% 
+                    mutate(gm.delta.cum = cumsum(gm.delta)) %>% ungroup
+
+money$gm.actual.monthly <- aggregate(select(money$gm.actual,gm.delta), list(money$gm.actual$month),FUN = sum) %>%
+                    rename(id = Group.1) %>%
+                    mutate(gm = gm.delta + money$gm.base.scenario["Actual","gm"])
+money$gm.actual.monthly <- mutate(money$gm.actual.monthly,
+                                  gm.delta.cum = cumsum(gm.delta),
+                                  gm.cum = cumsum(gm))
+
+################## Data for App Output Elements ##############################
+## Marshal the data required for the app's output elements e.g. charts etc
+
+promisetag <- rownames(scenarios)[scenarios$type=="latest.promise"]
+fcasttag <- rownames(scenarios)[scenarios$type=="latest.forecast"]
+# Get the GM profiles for non-actuals data. Will need to overwrite month
+# field to get it back to an actual date field, too many errors with TZ trying
+# to use as.Date
+money$gm.profile.delta <- gather(money$gm.profile.delta,key=month,value=gm.delta,-id)
+money$gm.profile.delta <- mutate(money$gm.profile.delta, merge.id=paste(month,id,sep="|"))
+money$gm.profile <- gather(money$gm.profile,key=month,value=gm,-id)
+money$gm.profile <- mutate(money$gm.profile, merge.id=paste(month,id,sep="|"))
+money$gm.profile.comb <- inner_join(money$gm.profile.delta, select(money$gm.profile,merge.id,gm), by="merge.id")
+money$gm.profile.delta.cum <- gather(money$gm.profile.delta.cum,key=month,value=gm.delta.cum,-id)
+money$gm.profile.delta.cum <- mutate(money$gm.profile.delta.cum, merge.id=paste(month,id,sep="|"))
+money$gm.profile.comb$month <- rep(phasedates, each=nrow(money$gm.profile.comb)/length(phasedates))
+money$gm.profile.comb <- inner_join(money$gm.profile.comb, 
+                                    select(money$gm.profile.delta.cum,merge.id,gm.delta.cum),
+                                    by="merge.id")
+
+dash <- list()
+# dash$data <- select(money$gm.profile.comb,-merge.id)
+# str.from <- c(paste(promisetag,"$",sep=""), paste(fcasttag,"$",sep="")); str.to <- c("Promise","Forecast")
+# for(x in seq_along(str.from)){dash$data$id <- gsub(str.from[x],str.to[x],dash$data$id)}
+# dash$data <- rbind(dash$data,
+#                      data.frame(
+#                                          gm = money$gm.actual.monthly$gm,
+#                                          gm.delta = money$gm.actual.monthly$gm.delta,
+#                                          gm.delta.cum = money$gm.actual.monthly$gm.delta.cum,
+#                                          id = "Actual",
+#                                          month = money$gm.actual.monthly$id
+#                      ))
+# dash$data <- spread(select(dash$data,-gm.delta,-gm.delta.cum), key=id,value=gm) %>%
+#                     mutate(act.prom = Actual - Promise, fcast.prom = Forecast - Promise,
+#                            act.fcast = Actual - Forecast) %>%
+#                     select(-Actual, -Forecast, -Promise) %>%
+#                     left_join(dash$data,.,by="month") %>%
+#                     gather(key=measure, value=value,-id,-month)
+
+dash$gm.mth <- select(filter(money$gm.profile.comb, id %in% c(promisetag,fcasttag)),-merge.id)
+str.from <- c(promisetag, fcasttag); str.to <- c("Promise","Forecast")
+for(x in seq_along(str.from)){dash$gm.mth$id <- gsub(str.from[x],str.to[x],dash$gm.mth$id)}
+dash$gm.mth <- rbind(dash$gm.mth,
+                     data.frame(
+                                        gm = money$gm.actual.monthly$gm,
+                                        gm.delta = money$gm.actual.monthly$gm.delta,
+                                        gm.delta.cum = money$gm.actual.monthly$gm.delta.cum,
+                                        id = "Actual",
+                                        month = money$gm.actual.monthly$id
+                     ))
+dash$gm.mth <- spread(select(dash$gm.mth,-gm.delta,-gm.delta.cum), key=id,value=gm) %>%
+                    mutate(act.prom = Actual - Promise, fcast.prom = Forecast - Promise,
+                           act.fcast = Actual - Forecast) %>%
+                    select(-Actual, -Forecast, -Promise) %>%
+                    left_join(dash$gm.mth,.,by="month") %>%
+                    gather(key=measure, value=value,-id,-month)
+
+actuals.latest.mth <- max(money$gm.actual.monthly$id)
+mths.with.actuals <- phasedates[which(phasedates <= actuals.latest.mth)]
+dash$table.summary <- filter(dash$gm.mth, (measure == "act.prom" & id == "Actual") | (measure == "fcast.prom" & id == "Forecast")) %>%
+                    mutate(year = year(month))
+dash$table.summary[dash$table.summary$month %in% mths.with.actuals,"year"] <- "Realised to Date"
+dash$table.summary <- group_by(dash$table.summary,id,year) %>%
+                    summarise(sum=sum(value)) %>%
+                    spread(key = year, value = sum)
+temp.colorder <- match(c("id","Realised to Date","2017","2018","2019"),colnames(dash$table.summary))
+dash$table.summary <- dash$table.summary[,temp.colorder]
+
+temp.join <- inner_join(money$gm.profile.comb, scenariodetail, by = c("id" = "scenariodetail"))
+temp.join <- filter(temp.join, scenario %in% c(promisetag, fcasttag))
+dash$table.past <- semi_join(money$gm.profile.comb,temp.join,by="id") %>%
+                    filter(month <= actuals.latest.mth) %>%
+                    select(-merge.id)
+dash$table.past$Activity <- scenariodetail[dash$table.past$id,"activity.id"]
+dash$table.past$Category <- metadata[dash$table.past$Activity,"summary.category"]
+dash$table.past$Title <- metadata[dash$table.past$Activity,"title"]
+dash$table.past$scen <- scenariodetail[dash$table.past$id,"scenario"]
+str.from <- c(promisetag, fcasttag); str.to <- c("Promise","Forecast")
+for(x in seq_along(str.from)){dash$table.past$scen <- gsub(str.from[x],str.to[x],dash$table.past$scen)}
+dash$table.past <- rbind(select(dash$table.past,-id),
+                     data.frame(
+                                         Activity=money$gm.actual$activ,
+                                         gm = money$gm.actual$gm,
+                                         gm.delta = money$gm.actual$gm.delta,
+                                         gm.delta.cum = money$gm.actual$gm.delta.cum,
+                                         scen = "Actual",
+                                         month = money$gm.actual$month,
+                                         Category = metadata[money$gm.actual$activ,"summary.category"],
+                                         Title = metadata[money$gm.actual$activ,"title"]
+                     ))
+dash$table.past.cat <- group_by(dash$table.past,Category,scen) %>%
+                    summarise(value=sum(gm.delta)) %>% ungroup
+dash$table.past.cat <- spread(dash$table.past.cat, key=scen,value=value, fill=0) %>%
+                    mutate(Act.to.Fcast = Actual - Forecast, Fcast.to.Prom = Forecast - Promise,
+                           Act.to.Prom = Actual - Promise) %>%
+                    arrange(desc(Act.to.Prom))
+temp.lookup <- match("Category",colnames(dash$table.past.cat))
+dash$table.past.cat[,-temp.lookup] <- apply(dash$table.past.cat[,-temp.lookup],2,round,1)
+
+dash$table.past.act <- group_by(dash$table.past,Activity,scen) %>%
+                    summarise(value=sum(gm.delta)) %>% ungroup
+dash$table.past.act <- spread(dash$table.past.act, key=scen,value=value, fill=0) %>%
+                    mutate(Act.to.Fcast = Actual - Forecast, Fcast.to.Prom = Forecast - Promise,
+                           Act.to.Prom = Actual - Promise) %>%
+                    arrange(desc(Act.to.Prom))
+temp.lookup <- match("Activity",colnames(dash$table.past.act))
+dash$table.past.act[,-temp.lookup] <- apply(dash$table.past.act[,-temp.lookup],2,round,1)
+dash$table.past.act$Title <- metadata[dash$table.past.act$Activity,"title"]
+dash$table.past.act$Category <- metadata[dash$table.past.act$Activity,"summary.category"]
+cnames <- colnames(dash$table.past.act)
+temp.lookup <- match(c("Category","Title"),cnames)
+dash$table.past.act <- dash$table.past.act[,c("Category","Title",cnames[-temp.lookup])]
+
+# temp.join <- inner_join(money$gm.profile.comb, scenariodetail, by = c("id" = "scenariodetail"))
+# temp.join <- filter(temp.join, scenario %in% c(promisetag, fcasttag))
+dash$table.future <- semi_join(money$gm.profile.comb,temp.join,by="id") %>%
+                    filter(month > actuals.latest.mth) %>%
+                    select(-merge.id)
+dash$table.future$Activity <- scenariodetail[dash$table.future$id,"activity.id"]
+dash$table.future$Category <- metadata[dash$table.future$Activity,"summary.category"]
+dash$table.future$Title <- metadata[dash$table.future$Activity,"title"]
+dash$table.future$scen <- scenariodetail[dash$table.future$id,"scenario"]
+str.from <- c(promisetag, fcasttag); str.to <- c("Promise","Forecast")
+for(x in seq_along(str.from)){dash$table.future$scen <- gsub(str.from[x],str.to[x],dash$table.future$scen)}
+dash$table.future.cat <- mutate(dash$table.future, year=year(month)) %>% 
+                    group_by(scen, Category, year) %>%
+                    summarise(value=sum(gm.delta)) %>% ungroup
+dash$table.future.cat <- spread(dash$table.future.cat, key=scen,value=value, fill=0) %>%
+                    mutate(Fcast.to.Prom = Forecast - Promise) %>%
+                    gather(key = scen, value=gm.delta,-Category,-year) %>%
+                    spread(key = year, value=gm.delta)
+temp.lookup <- match(c("Category","scen"),colnames(dash$table.future.cat))
+dash$table.future.cat[,-temp.lookup] <- apply(dash$table.future.cat[,-temp.lookup],2,round,1)
+dash$table.future.cat$Total <- rowSums(dash$table.future.cat[,-temp.lookup])
+dash$future.types <- c("Forecast","Promise","Fcast.to.Prom")
+
+dash$table.future.act <- mutate(dash$table.future, year=year(month)) %>% 
+                    group_by(scen,Activity,year) %>%
+                    summarise(value=sum(gm.delta)) %>% ungroup
+dash$table.future.act <- spread(dash$table.future.act, key=scen,value=value, fill=0) %>%
+                    mutate(Fcast.to.Prom = Forecast - Promise) %>%
+                    gather(key = scen, value=gm.delta,-Activity,-year) %>%
+                    spread(key = year, value=gm.delta) %>% rename(id=Activity)
+dash$table.future.act <- left_join(dash$table.future.act,
+                                   select(metadata,id,summary.category,title),by = "id") %>%
+                    rename(Activity=id,Category=summary.category, Title=title)
+temp.lookup <- match(c("Activity","Category","Title","scen"),colnames(dash$table.future.act))
+dash$table.future.act[,-temp.lookup] <- apply(dash$table.future.act[,-temp.lookup],2,round,1)
+dash$table.future.act$Total <- rowSums(dash$table.future.act[,-temp.lookup])
+cnames <- colnames(dash$table.future.act)
+temp.lookup <- match(c("Category","Title"),cnames)
+dash$table.future.act <- dash$table.future.act[,c("Category","Title",cnames[-temp.lookup])]
+dash$table.future.empties <- select(dash$table.future.act,-Category,-Title) %>%
+                    gather(key=period, value=gm.delta, -Activity,-scen) %>%
+                    spread(key=scen, value=gm.delta) %>%
+                    group_by(Activity) %>% 
+                    summarise(sum.fast=sum(abs(Forecast)),sum.prom=sum(abs(Promise))) %>%
+                    mutate(total = sum.fast + sum.prom)
+dash$table.future.emptact <- dash$table.future.empties[which(dash$table.future.empties$total==0),"Activity"]

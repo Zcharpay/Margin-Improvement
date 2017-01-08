@@ -2,7 +2,7 @@ library(shiny)
 library(shinydashboard)
 library(DT)
 
-source("datawrangling.R")
+source("datawrangling_experiment2.R")
 
 ui <- dashboardPage(
   dashboardHeader(title = "Margin Improvement"),
@@ -121,16 +121,17 @@ ui <- dashboardPage(
 )
 
 server <- function(input, output){
-  output$GMpermonth <- renderPlot(ggplot(filter(dashgmpermonth, variable=="actualgm" | variable == "fcastgm" | variable=="promgm"),aes(month,value))
-        +geom_line(aes(color=variable))+geom_point(aes(color=variable)))
+  output$GMpermonth <- renderPlot(ggplot(filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm"),aes(month,value))
+                    +geom_line(aes(color=id))+geom_point(aes(color=id)))
 
-  output$GMpermonthcum <- renderPlot(ggplot(filter(dashgmcum, variable=="actualgm" | variable == "fcastgm" | variable=="promgm"),aes(month,value))
-                                  +geom_line(aes(color=variable))+geom_point(aes(color=variable)))
+  output$GMpermonthcum <- renderPlot(ggplot(filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm.delta.cum"),aes(month,value))
+                    +geom_line(aes(color=id))+geom_point(aes(color=id)))
 
-  output$dashtable_summary_table <- renderTable(dashtable[["summary"]])
-  
+  output$dashtable_summary_table <- renderTable(dash$table.summary)
+
   output$dashtable_past_table <- DT::renderDataTable({
-      rbind(dashtable[["pastbycat"]],c("TOTAL",colSums(select(dashtable[["pastbycat"]],-(Category)))))
+                    dash$table.past.cat
+      # rbind(dashtable[["pastbycat"]],c("TOTAL",colSums(select(dashtable[["pastbycat"]],-(Category)))))
       # dashtable[["pastbycat"]]
     },
     options = list(dom = "t",pageLength = 100),
@@ -140,21 +141,24 @@ server <- function(input, output){
 
   output$dashtable_past_table_details <- DT::renderDataTable({
     if(is.null(input$dashtable_past_table_rows_selected)){
-      table.data <- select(dashtable[["past"]],-(activity))
+                    table.data <- select(dash$table.past.act,-Activity)
     }else{
-      cat <- dashtable[["pastbycat"]][input$dashtable_past_table_rows_selected,"Category"]
-      table.data <- filter(select(dashtable[["past"]],-(activity)),Category %in% cat)
+      cat <- dash$table.past.cat[input$dashtable_past_table_rows_selected,"Category"]
+      table.data <- select(filter(dash$table.past.act,Category %in% as.matrix(cat)),-Activity)
+      # browser()
     }
-    rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-(Category),-(Title)))))
+    # browser()
+    rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-Title,-Category))))
   },
   options = list(pageLength = 100),
   # options = list(autoWidth = TRUE),
   rownames = FALSE
   )
-  
+
   output$dashtable_future_table <- DT::renderDataTable({
-    table.data.cat <- select(filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][
-      as.numeric(input$dashtable_future_select)]),-(type))
+    table.data.cat <- select(filter(dash$table.future.cat,scen==dash$future.types[
+                        as.numeric(input$dashtable_future_select)]),
+                        -(scen))
     # browser()
     rbind(table.data.cat,c("TOTAL",colSums(select(table.data.cat,-(Category)))))
     # return(table.data.cat)
@@ -163,58 +167,71 @@ server <- function(input, output){
   options = list(dom = "t",pageLength = 100),
   rownames = FALSE
   )
-  
+
   futurecat <- reactive({
     if(is.null(input$dashtable_future_table_rows_selected)){
-      unique(dashtable[["future"]]$Category)
+      unique(dash$table.future.cat$Category)
     }else{
-      filter(dashtable[["futurebycat"]],type==dashtable[["future_types"]][
+                    # browser()
+      filter(dash$table.future.cat,scen==dash$future.types[
         as.numeric(input$dashtable_future_select)])[input$dashtable_future_table_rows_selected,"Category"]
     }
     })
-  
+
   # observeEvent(futurecat(),print(futurecat()))
-  
+
   output$dashtable_future_table_details <- DT::renderDataTable({
     if(input$dashtable_future_select_zeros==1){
-      rowidx <- !apply(select(filter(dashtable[["future"]], type != "fcast.prom"),-(type),-(Category),
-                              -(Title),-(Total)),1,FUN=function(x){all(x==0)})
+                    table.data <- filter(dash$table.future.act,
+                                         !(Activity %in% dash$table.future.emptact)) 
+      # rowidx <- !apply(select(filter(dash$table.future.act, type != "Fcast.to.Prom"),
+      #                         -Category,-Title,-Activity,-scen),1,
+      #                  FUN=function(x){all(x==0)})
       # table.data <- select(dashtable[["future"]],-(type))
     }else if(input$dashtable_future_select_zeros==2){
-      rowidx <- rep(TRUE,nrow(filter(dashtable[["future"]], type != "fcast.prom")))
+                        table.data <- dash$table.future.act
+      # rowidx <- rep(TRUE,nrow(filter(dashtable[["future"]], type != "Fcast.to.Prom")))
     }
-    rowidxdeltas <- apply(matrix(rowidx, ncol=2),1,any)
+                      # if(is.null(input$dashtable_future_table_rows_selected)){
+                      #                         futurecat <- unique(dash$table.future.cat$Category)
+                      #                       }else{
+                      #                                       # browser()
+                      #                         futurecat <- filter(dash$table.future.cat,scen==dash$future.types[
+                      #                           as.numeric(input$dashtable_future_select)])[input$dashtable_future_table_rows_selected,"Category"]
+                      #                       }
+                      # # browser()
+    # rowidxdeltas <- apply(matrix(rowidx, ncol=2),1,any)
     # table.data <- dashtable[["future"]]
     # browser()
-    table.data <- rbind(filter(dashtable[["future"]], type != "fcast.prom")[rowidx,],
-                        filter(dashtable[["future"]], type == "fcast.prom")[rowidxdeltas,])
+    # table.data <- rbind(filter(dashtable[["future"]], type != "fcast.prom")[rowidx,],
+    #                     filter(dashtable[["future"]], type == "fcast.prom")[rowidxdeltas,])
     table.data <- arrange(table.data,desc(Total),Category,Title)
-    # browser()    
-    
-    table.data <- select(filter(table.data,type==dashtable[["future_types"]][
-                  as.numeric(input$dashtable_future_select)] & Category %in% futurecat()),-(type))
     # browser()
+
+    table.data <- select(filter(table.data,scen==dash$future.types[
+                  as.numeric(input$dashtable_future_select)] & Category %in% as.vector(t(futurecat()))),-scen,-Activity)
     rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-(Category),-(Title)))))
+    # browser()
     },
   options = list(pageLength = 100),
   # options = list(autoWidth = TRUE),
   rownames = FALSE
   )
-  
-  # output$dashtable_past_table_details <- renderPrint(input$dashtable_past_table_rows_selected)
-  
-  output$plot_clickedpoints <- renderTable({
-    # For base graphics, we need to specify columns, though for ggplot2,
-    # it's usually not necessary. 
-    res <- nearPoints(dashgmpermonth, input$plot_click_GMpermonth)
-    if (nrow(res) == 0)
-      return()
-    res
-  })
 
-  observeEvent(input$plot_click_GMpermonth,{test <<- nearPoints(dashgmpermonth, input$plot_click_GMpermonth,
-                                                              threshold = 5,
-                                                              maxpoints = 1)})
+  # output$dashtable_past_table_details <- renderPrint(input$dashtable_past_table_rows_selected)
+  # 
+  # output$plot_clickedpoints <- renderTable({
+  #   # For base graphics, we need to specify columns, though for ggplot2,
+  #   # it's usually not necessary. 
+  #   res <- nearPoints(dashgmpermonth, input$plot_click_GMpermonth)
+  #   if (nrow(res) == 0)
+  #     return()
+  #   res
+  # })
+  # 
+  # observeEvent(input$plot_click_GMpermonth,{test <<- nearPoints(dashgmpermonth, input$plot_click_GMpermonth,
+  #                                                             threshold = 5,
+  #                                                             maxpoints = 1)})
 }
 
 shinyApp(ui = ui, server = server)
