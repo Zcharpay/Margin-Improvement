@@ -9,7 +9,7 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
-      menuItem("Widgets", tabName = "widgets", icon = icon("th"))
+      menuItem("Detail View", tabName = "detailview", icon = icon("th"))
     ),
     sliderInput("dashslider_date", "Date Filter:", min=as.Date("2017-01-01"), max=as.Date("2019-12-01"),
                 value=c(as.Date("2017-01-01"),as.Date("2019-12-01")), step = NULL, timeFormat = "%b-%y")
@@ -113,8 +113,20 @@ ui <- dashboardPage(
             ),
 
       # Second tab content
-      tabItem(tabName = "widgets",
-              h2("Widgets tab content")
+      tabItem(tabName = "detailview",
+              fluidRow(
+                                  h2("Graphs(s)")
+              ),
+              fluidRow(
+                                  box(title="Scenarios",collapsible = TRUE,
+                                      DT::dataTableOutput("detailview_scentable")
+                                      )
+              ),
+              fluidRow(
+                                  box(title="Activities",collapsible = TRUE,
+                                      DT::dataTableOutput("detailview_acttable")
+                                      )
+              )
             )
     )
   )
@@ -218,6 +230,13 @@ server <- function(input, output){
   rownames = FALSE
   )
 
+  output$detailview_scentable <- DT::renderDataTable({
+                      select(filter(scenarioconfig, id!="Actual"),id,title,description)
+  })
+  
+  output$detailview_acttable <- DT::renderDataTable({
+                      blah
+  })
   # output$dashtable_past_table_details <- renderPrint(input$dashtable_past_table_rows_selected)
   # 
   # output$plot_clickedpoints <- renderTable({

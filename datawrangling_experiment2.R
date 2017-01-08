@@ -437,3 +437,16 @@ dash$table.future.empties <- select(dash$table.future.act,-Category,-Title) %>%
                     summarise(sum.fast=sum(abs(Forecast)),sum.prom=sum(abs(Promise))) %>%
                     mutate(total = sum.fast + sum.prom)
 dash$table.future.emptact <- dash$table.future.empties[which(dash$table.future.empties$total==0),"Activity"]
+
+detailview <- list()
+detailview$act.table.data <- with(money,gm.profile.comb[grepl("^(VA|MA)",gm.profile.comb$id),]) %>%
+                    select(-merge.id) %>%
+                    mutate(year = year(month))
+detailview$act.table <- group_by(detailview$act.table.data,id,year) %>%
+                    summarise(gm.delta=sum(gm.delta)) %>% ungroup %>%
+                    spread(key=year,value=gm.delta)
+detailview$act.table$Total <- rowSums(select(detailview$act.table,-id))
+test <- group_by(detailview$act.table.data,month) %>% summarise(From = min(month))
+                    # mutate(dash$table.future, year=year(month)) %>% 
+                    # group_by(scen,Activity,year) %>%
+                    # summarise(value=sum(gm.delta)) %>% ungroup
