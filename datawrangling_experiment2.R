@@ -6,7 +6,7 @@ library(ggplot2)
 library(tidyr)
 
 options(stringsAsFactors = FALSE)
-filename <- "Test tracker structure10.xlsx"
+filename <- "Test tracker structure11.xlsx"
 
 ################## Read Inputs from File ##############################
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
@@ -445,8 +445,27 @@ detailview$act.table.data <- with(money,gm.profile.comb[grepl("^(VA|MA)",gm.prof
 detailview$act.table <- group_by(detailview$act.table.data,id,year) %>%
                     summarise(gm.delta=sum(gm.delta)) %>% ungroup %>%
                     spread(key=year,value=gm.delta)
+temp.lookup <- match("id",colnames(detailview$act.table))
+detailview$act.table[,-temp.lookup] <- apply(detailview$act.table[,-temp.lookup],1,round)
 detailview$act.table$Total <- rowSums(select(detailview$act.table,-id))
-test <- group_by(detailview$act.table.data,month) %>% summarise(From = min(month))
+temp.summary <- group_by(detailview$act.table.data,id) %>% summarise(From = min(month))
+# test2 <- split(detailview$act.table.data,detailview$act.table.data$id) %>%
+#                     lapply(FUN = function(x){
+#                                         format(as.POSIXct(as.numeric(min(filter(x,gm.delta!=0)$month))
+#                                                           , origin="1970-01-01", tz="GMT"),"%b-%y")
+#                                         })
+# test3 <- lapply(test2,FUN = fun(x){min(filte              r(x,gm.delta!=0)$month)})
+# test3 <- lapply(test2,FUN = fun(x){min(filter(x,gm.delta!=0)$month)})
+# detailview$act.table$from <- test2[unlist(detailview$act.table$id)]
+detailview$act.table$Title <- metadata[detailview$act.table$id,"title"]
+detailview$act.table$Category <- metadata[detailview$act.table$id,"summary.category"]
+cnames <- colnames(detailview$act.table)
+temp.lookup <- match(c("Title","Category"),cnames)
+detailview$act.table <- detailview$act.table[,c("Category","Title",cnames[-temp.lookup])]
+temp.lookup <- which(detailview$act.table$id %in% filter(scenariodetail,scenario==fcasttag)$activity.id)
+detailview$act.table[temp.lookup,"dash.group"] <- "Forecast"
+temp.lookup <- which(detailview$act.table$id %in% filter(scenariodetail,scenario==promisetag)$activity.id)
+detailview$act.table[temp.lookup,"dash.group"] <- "Promise"
                     # mutate(dash$table.future, year=year(month)) %>% 
                     # group_by(scen,Activity,year) %>%
                     # summarise(value=sum(gm.delta)) %>% ungroup

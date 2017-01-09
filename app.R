@@ -97,7 +97,7 @@ ui <- dashboardPage(
                            DT::dataTableOutput("dashtable_future_table_details")
                            ),
                   tabPanel("Selected Month",
-                           tableOutput("plot_clickedpoints")
+                           DT::dataTableOutput("plot_clickedpoints")
                            )
                     )
               )
@@ -235,18 +235,34 @@ server <- function(input, output){
   })
   
   output$detailview_acttable <- DT::renderDataTable({
-                      blah
+                      detailview$act.table
   })
   # output$dashtable_past_table_details <- renderPrint(input$dashtable_past_table_rows_selected)
   # 
-  # output$plot_clickedpoints <- renderTable({
-  #   # For base graphics, we need to specify columns, though for ggplot2,
-  #   # it's usually not necessary. 
-  #   res <- nearPoints(dashgmpermonth, input$plot_click_GMpermonth)
-  #   if (nrow(res) == 0)
-  #     return()
-  #   res
-  # })
+  output$plot_clickedpoints <- DT::renderDataTable({
+    # For base graphics, we need to specify columns, though for ggplot2,
+    # it's usually not necessary.
+    res <- nearPoints(dash$gm.mth, input$plot_click_GMpermonth)
+    # res$month <- as.POSIXct(as.numeric(res$month), origin="1970-01-01", tz="GMT")
+    # browser()
+    if (nrow(res) == 0)
+      return()
+    # table.data.mth <- filter(dash$gm.mth, month == res$month)
+    if(res$month %in% mths.with.actuals){
+                    table.data.mth <- select(filter(dash$table.past, month == res$month),-gm,-gm.delta.cum,-month) %>%
+                                        spread(key=scen, value=gm.delta)
+    }else{
+                        table.data.mth <- select(filter(dash$table.future, month == res$month),-gm,-gm.delta.cum,-month,-id) %>%
+                                            spread(key=scen, value=gm.delta)
+    }
+    # browser()
+    temp.lookup <- match(c("Activity","Category","Title"),colnames(table.data.mth))
+    table.data.mth[,-temp.lookup] <- apply(table.data.mth[,-temp.lookup],2,round,1)
+    table.data.mth
+    # res
+  },
+  options = list(pageLength = 100),
+  rownames = FALSE)
   # 
   # observeEvent(input$plot_click_GMpermonth,{test <<- nearPoints(dashgmpermonth, input$plot_click_GMpermonth,
   #                                                             threshold = 5,
