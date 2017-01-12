@@ -9,7 +9,8 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
-      menuItem("Detail View", tabName = "detailview", icon = icon("th"))
+      menuItem("Detail View", tabName = "detailview", icon = icon("th")),
+      menuItem("Volume Balance",tabName = "volbal", icon = icon("balance-scale"))
     ),
     sliderInput("dashslider_date", "Date Filter:", min=as.Date("2017-01-01"), max=as.Date("2019-12-01"),
                 value=c(as.Date("2017-01-01"),as.Date("2019-12-01")), step = NULL, timeFormat = "%b-%y")
@@ -115,29 +116,113 @@ ui <- dashboardPage(
       # Second tab content
       tabItem(tabName = "detailview",
               fluidRow(
-                                  h2("Graphs(s)")
+                    box(title="GM Impact of Activities",width = 9,
+                        plotOutput("detailview_deltagmplot",height = 450)    
+                        )
               ),
+              # fluidRow(
+              #       tabBox(
+              #                           title = "Details",
+              #                           id = "dashtable_tabs", width = 9,
+              #                           tabPanel("Volume Bal",
+              #                                    fluidRow(
+              #                                               DT::dataTableOutput("detailview_volscentable")
+              #                                    )
+              #                           )
+              #       )
+              # ),
               fluidRow(
-                                  box(title="Scenarios",collapsible = TRUE,
+                                  box(title="Scenarios",collapsible = TRUE, width=9,
                                       DT::dataTableOutput("detailview_scentable")
                                       )
               ),
               fluidRow(
-                                  box(title="Activities",collapsible = TRUE,
-                                      DT::dataTableOutput("detailview_acttable")
-                                      )
+                    tabBox(title="Activities",width=12, id="detailview_activ_tabs",
+                           tabPanel("Individual",
+                                    fluidRow(
+                                        DT::dataTableOutput("detailview_acttable")
+                                        )
+                                    ),
+                           tabPanel("By Scenario",
+                                    fluidRow(
+                                        # DT::dataTableOutput("detailview_acttable")
+                                    )
+                           ),
+                           tabPanel("Group 1",
+                                    fluidRow(
+                                        # DT::dataTableOutput("detailview_acttable")
+                                    )
+                           ),
+                           tabPanel("Group 2",
+                                    fluidRow(
+                                                        # DT::dataTableOutput("detailview_acttable")
+                                    )
+                           ),
+                           tabPanel("Group 3",
+                                    fluidRow(
+                                                        # DT::dataTableOutput("detailview_acttable")
+                                    )
+                           ),
+                           tabPanel("Group 4",
+                                    fluidRow(
+                                                        # DT::dataTableOutput("detailview_acttable")
+                                    )
+                           ),
+                           tabPanel("Group 5",
+                                    fluidRow(
+                                                        # DT::dataTableOutput("detailview_acttable")
+                                    )
+                           ),
+                           tabPanel("Group 6",
+                                    fluidRow(
+                                                        # DT::dataTableOutput("detailview_acttable")
+                                    )
+                           )
+                           )
               )
-            )
+            ),
+      tabItem(tabName = "volbal",
+              fluidRow(
+                                  tabBox(
+                                                      title = "Details",
+                                                      id = "dashtable_tabs", width = 9,
+                                                      tabPanel("Volume Bal",
+                                                               fluidRow(
+                                                                                   DT::dataTableOutput("detailview_volscentable")
+                                                               )
+                                                      )
+                                  )
+              )
+              )
     )
   )
 )
 
 server <- function(input, output){
-  output$GMpermonth <- renderPlot(ggplot(filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm"),aes(month,value))
-                    +geom_line(aes(color=id))+geom_point(aes(color=id)))
+  output$GMpermonth <- renderPlot({
+                    data.plot <- filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm")
+                    ggplot(data.plot,aes(month,value))+
+                    geom_line(aes(color=id))+geom_point(aes(color=id))+
+                    scale_y_continuous(breaks=seq(round(min(data.plot$value),0)-1,round(max(data.plot$value),0)+1,by=2))+
+                    ylab("USD$M per Month")+xlab("Time")+
+                    theme(axis.title.x = element_text(size=17),
+                                        axis.text.x  = element_text(size=14),
+                                        axis.title.y = element_text(size=17),
+                                        axis.text.y = element_text(size=14)
+                          )
+                    })
 
-  output$GMpermonthcum <- renderPlot(ggplot(filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm.delta.cum"),aes(month,value))
-                    +geom_line(aes(color=id))+geom_point(aes(color=id)))
+  output$GMpermonthcum <- renderPlot({
+                    data.plot <- filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm.delta.cum")
+                    ggplot(data.plot,aes(month,value))+
+                    geom_line(aes(color=id))+geom_point(aes(color=id))+
+                                        scale_y_continuous(breaks=seq(round(min(data.plot$value),-1),round(max(data.plot$value),-1),by=5))+
+                                        ylab("USD$M Cumulative")+xlab("Time")+
+                                        theme(axis.title.x = element_text(size=17),
+                                              axis.text.x  = element_text(size=14),
+                                              axis.title.y = element_text(size=17),
+                                              axis.text.y = element_text(size=14))
+                    })
 
   output$dashtable_summary_table <- renderTable(dash$table.summary)
 
@@ -230,13 +315,41 @@ server <- function(input, output){
   rownames = FALSE
   )
 
+  # detailview_scentable
+  output$detailview_deltagmplot <- renderPlot({
+                      if(is.null(input$detailview_scentable_rows_selected)){
+                                        chart.scens <- c(fcasttag,promisetag)
+                      }else{
+                                        chart.scens <- detailview$scen.table[
+                                                            input$detailview_scentable_rows_selected,"id"]
+                      }
+                      data.plot <- select(filter(money$gm.profile.comb,id %in% chart.scens)
+                                          ,id,month,gm.delta)
+                      ggplot(data.plot,aes(month,gm.delta))+
+                                          geom_line(aes(color=id))+geom_point(aes(color=id))+
+                                          scale_y_continuous(breaks=seq(round(min(data.plot$gm.delta),0)-1,round(max(data.plot$gm.delta),0)+1,by=2))+
+                                          ylab("USD$M per Month")+xlab("Time")+
+                                          theme(axis.title.x = element_text(size=17),
+                                                axis.text.x  = element_text(size=14),
+                                                axis.title.y = element_text(size=17),
+                                                axis.text.y = element_text(size=14)
+                                          )
+  })
+  
   output$detailview_scentable <- DT::renderDataTable({
-                      select(filter(scenarioconfig, id!="Actual"),id,title,description)
+                      detailview$scen.table
   })
   
   output$detailview_acttable <- DT::renderDataTable({
                       detailview$act.table
-  })
+  },
+  options = list(pageLength = 100))
+  
+  output$detailview_volscentable <- DT::renderDataTable({
+                      detailview$scen.vol.table
+  },
+  options = list(pageLength = 100)
+  )
   # output$dashtable_past_table_details <- renderPrint(input$dashtable_past_table_rows_selected)
   # 
   output$plot_clickedpoints <- DT::renderDataTable({

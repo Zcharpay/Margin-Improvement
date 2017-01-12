@@ -6,7 +6,7 @@ library(ggplot2)
 library(tidyr)
 
 options(stringsAsFactors = FALSE)
-filename <- "Test tracker structure11.xlsx"
+filename <- "Test tracker structure12.xlsx"
 
 ################## Read Inputs from File ##############################
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
@@ -99,13 +99,14 @@ colnames(scenarioconfig) <- cnames; rownames(scenarioconfig) <- rnames
 colnames(scenarioconfig)[1] <- "id"
 idxscenarioconfig.scen <- !grepl("Actual",rownames(scenarioconfig))
 scenarios <- scenarioconfig[idxscenarioconfig.scen,]
+scenarioconfig$scen.num <- scenarioconfig$id
+scenarioconfig$scen.num <- gsub("SC","",scenarioconfig$scen.num)
 
 ## Read scenario detail table from the excel workbook
 scenariodetail <- read.xlsx(file=filename,sheetName = "Scenario",stringsAsFactors=FALSE,header=TRUE)
 # This will remove any column/row that is entirely NA values (bad excel behaviour)
 scenariodetail <- scenariodetail[rowSums(is.na(scenariodetail))<ncol(scenariodetail),colSums(is.na(scenariodetail))<nrow(scenariodetail)]
 rownames(scenariodetail) <- as.character(scenariodetail[,1])
-
 
 ################## Intermediate data ##############################
 ## Data wrangling in this section to setup everything required to calculate final results
@@ -156,6 +157,9 @@ scenariophasing <- activityphasing[scenariodetail$activity.id,]
 rownames(scenariophasing) <- rownames(scenariodetail)
 scenariophasing <- data.frame(scenariophasing,id=scenariodetail$scenariodetail)
 activityphasing <- data.frame(activityphasing,id=rownames(activityphasing))
+
+#Scenarios automatically created
+new.id <- paste("SC",max(as.numeric(subset(scenarioconfig,scen.num!="Actual")$scen.num))+1,sep="")
 
 ################## Output data ##############################
 ## Calculate the various outputs required
@@ -277,6 +281,8 @@ money$gm.actual.monthly <- aggregate(select(money$gm.actual,gm.delta), list(mone
 money$gm.actual.monthly <- mutate(money$gm.actual.monthly,
                                   gm.delta.cum = cumsum(gm.delta),
                                   gm.cum = cumsum(gm))
+
+
 
 ################## Data for App Output Elements ##############################
 ## Marshal the data required for the app's output elements e.g. charts etc
@@ -439,6 +445,7 @@ dash$table.future.empties <- select(dash$table.future.act,-Category,-Title) %>%
 dash$table.future.emptact <- dash$table.future.empties[which(dash$table.future.empties$total==0),"Activity"]
 
 detailview <- list()
+detailview$scen.table <- select(filter(scenarioconfig, id!="Actual"),id,title,description)
 detailview$act.table.data <- with(money,gm.profile.comb[grepl("^(VA|MA)",gm.profile.comb$id),]) %>%
                     select(-merge.id) %>%
                     mutate(year = year(month))
@@ -446,7 +453,7 @@ detailview$act.table <- group_by(detailview$act.table.data,id,year) %>%
                     summarise(gm.delta=sum(gm.delta)) %>% ungroup %>%
                     spread(key=year,value=gm.delta)
 temp.lookup <- match("id",colnames(detailview$act.table))
-detailview$act.table[,-temp.lookup] <- apply(detailview$act.table[,-temp.lookup],1,round)
+detailview$act.table[,-temp.lookup] <- apply(detailview$act.table[,-temp.lookup],2,round,1)
 detailview$act.table$Total <- rowSums(select(detailview$act.table,-id))
 temp.summary <- group_by(detailview$act.table.data,id) %>% summarise(From = min(month))
 # test2 <- split(detailview$act.table.data,detailview$act.table.data$id) %>%
@@ -466,6 +473,11 @@ temp.lookup <- which(detailview$act.table$id %in% filter(scenariodetail,scenario
 detailview$act.table[temp.lookup,"dash.group"] <- "Forecast"
 temp.lookup <- which(detailview$act.table$id %in% filter(scenariodetail,scenario==promisetag)$activity.id)
 detailview$act.table[temp.lookup,"dash.group"] <- "Promise"
+detailview$act.table <- left_join(detailview$act.table, select(metadata,id,project,bip,v.o),by="id")
                     # mutate(dash$table.future, year=year(month)) %>% 
                     # group_by(scen,Activity,year) %>%
                     # summarise(value=sum(gm.delta)) %>% ungroup
+
+temp.lookup <- which(volumes$total.scen$id %in% scenarioconfig$id)
+detailview$scen.vol.table <- apply(t(select(volumes$total.scen[temp.lookup,],-id)),2,round,1)
+colnames(detailview$scen.vol.table) <- scenarioconfig[colnames(detailview$scen.vol.table),"title"]
