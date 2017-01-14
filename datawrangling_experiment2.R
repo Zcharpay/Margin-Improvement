@@ -99,14 +99,53 @@ colnames(scenarioconfig) <- cnames; rownames(scenarioconfig) <- rnames
 colnames(scenarioconfig)[1] <- "id"
 idxscenarioconfig.scen <- !grepl("Actual",rownames(scenarioconfig))
 scenarios <- scenarioconfig[idxscenarioconfig.scen,]
-scenarioconfig$scen.num <- scenarioconfig$id
-scenarioconfig$scen.num <- gsub("SC","",scenarioconfig$scen.num)
+scenarioconfig$scen.num <- gsub("SC","",scenarioconfig$id)
+scenariogroups <- data.frame(type=character(),level=character())
+scenariogroup_titles <- c("bip"="BIP","v.o"="V&O","project"="Project","summary.category"="Category")
+for(type in names(scenariogroup_titles)){
+                    scenariogroups <- rbind(scenariogroups,data.frame(
+                                        type=type, level=unique(metadata[,type])
+                    ))
+}
+scenariogroups <- filter(scenariogroups,level!="No",level!="System") %>%
+                    mutate(title = paste(scenariogroup_titles[type]," (",level,")",sep=""),
+                           num = seq_along(type)+scenario_maxid)
+scenario_maxid <- max(as.numeric(filter(scenarioconfig,scen.num!="Actual")$scen.num))
+scenarioconfig <- rbind(scenarioconfig,
+                        data.frame(id=paste("SC",scenariogroups$num,sep=""),
+                                   base.vol.id=scenarioconfig[fcasttag,"base.vol.id"],
+                                   base.price.id=scenarioconfig[fcasttag,"base.price.id"],
+                                   title=scenariogroups$title,
+                                   description=scenariogroups$title,
+                                   type="Scenario",
+                                   scen.num=scenariogroups$num)
+                        )
+rownames(scenarioconfig) <- scenarioconfig$id
+
+metadata_long <- gather(metadata,key=type,value=level,-id)
 
 ## Read scenario detail table from the excel workbook
 scenariodetail <- read.xlsx(file=filename,sheetName = "Scenario",stringsAsFactors=FALSE,header=TRUE)
 # This will remove any column/row that is entirely NA values (bad excel behaviour)
 scenariodetail <- scenariodetail[rowSums(is.na(scenariodetail))<ncol(scenariodetail),colSums(is.na(scenariodetail))<nrow(scenariodetail)]
 rownames(scenariodetail) <- as.character(scenariodetail[,1])
+
+for(rowidx in 1:nrow(scenariogroups)){
+                    x <- scenariogroups[rowidx,]
+                    temp.lookup <- filter(metadata_long,type==x$type,level==x$level) %>%
+                                        mutate(seq=seq_along(id))
+                    scenariodetail <- rbind(scenariodetail,
+                          data.frame(scenariodetail=paste("SC",as.numeric(x$num),"-",temp.lookup$seq,sep=""),
+                                     activity.id=temp.lookup$id))
+}
+# scenariodetail <- apply(scenariogroups,1,FUN = function(x){
+#                     temp.lookup <- filter(metadata_long,type==x["type"],level==x["level"]) %>%
+#                                         mutate(seq=seq_along(id))
+#                     rbind(scenariodetail,
+#                           data.frame(scenariodetail=paste("SC",as.numeric(x["num"]),"-",temp.lookup$seq,sep=""),
+#                                      activity.id=temp.lookup$id))
+#                     browser()
+# })
 
 ################## Intermediate data ##############################
 ## Data wrangling in this section to setup everything required to calculate final results
