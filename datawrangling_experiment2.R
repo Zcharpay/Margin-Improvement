@@ -98,8 +98,6 @@ rnames <- as.character(scenarioconfig[,1]); cnames <- tolower(colnames(scenarioc
 # scenarioconfig <- scenarioconfig[,-1]
 colnames(scenarioconfig) <- cnames; rownames(scenarioconfig) <- rnames
 colnames(scenarioconfig)[1] <- "id"
-idxscenarioconfig.scen <- !grepl("Actual",rownames(scenarioconfig))
-scenarios <- scenarioconfig[idxscenarioconfig.scen,]
 scenarioconfig$scen.num <- gsub("SC","",scenarioconfig$id)
 scenarioconfig$colour.series = scenarioconfig$title
 scenariogroups <- data.frame(type=character(),level=character())
@@ -141,7 +139,66 @@ for(rowidx in 1:nrow(scenariogroups)){
                           data.frame(scenariodetail=paste("SC",as.numeric(x$num),"-",temp.lookup$seq,sep=""),
                                      activity.id=temp.lookup$id))
 }
+# rownames(scenariodetail) <- scenariodetail$scenariodetail
+
+# Generate other auto scenarios e.g. all Os.
+scenariogroups_combos <- list("O(all)"=data.frame(type="v.o",level=c("O(high)","O(medium)","O(low)"),title="O(all)"),
+                              "O(hi+med)"=data.frame(type="v.o",level=c("O(high)","O(medium)"),title="O(hi+med)"))
+scenariogroups_combos <- lapply(scenariogroups_combos,FUN=function(x){mutate(x,
+                                        id.title=paste(scenariogroup_titles[x$type[1]]," (",x$title[1],")",sep=""))})
+temp.count <- 0
+for(combo in scenariogroups_combos){
+                    temp.count <- temp.count + 1
+                    x <- scenariogroups_combos[[temp.count]]
+                    temp.rownum <- as.numeric(last(scenarioconfig$scen.num))+1
+                    temp.str <- paste(scenariogroup_titles[x$type[1]]," (",x$title[1],")",sep="")
+                    scenarioconfig <- rbind(scenarioconfig,data.frame(
+                                        id=paste("SC",temp.rownum,sep=""),
+                                        base.vol.id=scenarioconfig[fcasttag,"base.vol.id"],
+                                        base.price.id=scenarioconfig[fcasttag,"base.price.id"],
+                                        title=temp.str,
+                                        description=temp.str,
+                                        type="Auto",
+                                        scen.num=temp.rownum,
+                                        colour.series=x$title[1]))
+                    for(idx in 1:nrow(x)){
+                                        temp.lookup <- filter(metadata_long,type==x[idx,"type"],level==x[idx,"level"]) %>%
+                                                            mutate(seq=seq_along(id))
+                                        if(nrow(temp.lookup)>0){
+                                        scenariodetail <- rbind(scenariodetail,
+                                                                data.frame(scenariodetail=paste("SC",temp.rownum,"-",temp.lookup$seq,sep=""),
+                                                                           activity.id=temp.lookup$id))
+                                        }
+                    }
+}
+# Identify parent scenario for the individual activities in scenario detail
+scenariodetail$scenario <- sapply(scenariodetail$scenariodetail,
+                                  FUN=function(x){strsplit(x,split="-")[[1]][1]})
+idxscenarioconfig.scen <- !grepl("Actual",scenarioconfig$id)
+scenarios <- scenarioconfig[idxscenarioconfig.scen,]
+scenariodetail$basevolid <- scenarios[scenariodetail$scenario,"base.vol.id"]
+scenariodetail <- group_by(scenariodetail,scenario) %>% 
+                    mutate(scenariodetail = paste(scenario,"-",seq_along(scenario),sep="")) %>% 
+                    ungroup
+scenariodetail <- as.data.frame(scenariodetail)
+rownames(scenarioconfig) <- scenarioconfig$id
 rownames(scenariodetail) <- scenariodetail$scenariodetail
+
+# scenarioconfig <- rbind(scenarioconfig,do.call(rbind,lapply(scenariogroups_combos,FUN=function(x){
+#                     temp.rownum <- as.numeric(last(scenarioconfig$scen.num))+1
+#                     temp.str <- paste(scenariogroup_titles[x$type[1]]," (",x$title[1],")",sep="")
+#                     data.frame(
+#                     id=paste("SC",temp.rownum,sep=""),
+#                     base.vol.id=scenarioconfig[fcasttag,"base.vol.id"],
+#                     base.price.id=scenarioconfig[fcasttag,"base.price.id"],
+#                     title=temp.str,
+#                     description=temp.str,
+#                     type="Auto",
+#                     scen.num=temp.rownum,
+#                     colour.series=x$title[1]
+#                     )
+# })))
+
 # scenariodetail <- apply(scenariogroups,1,FUN = function(x){
 #                     temp.lookup <- filter(metadata_long,type==x["type"],level==x["level"]) %>%
 #                                         mutate(seq=seq_along(id))
@@ -158,10 +215,7 @@ plotcolours <- plotcolours[rowSums(is.na(plotcolours))<ncol(plotcolours),colSums
 colnames(plotcolours)[1] <- "series"
 ################## Intermediate data ##############################
 ## Data wrangling in this section to setup everything required to calculate final results
-# Identify parent scenario for the individual activities in scenario detail
-scenariodetail$scenario <- sapply(scenariodetail$scenariodetail,
-                                  FUN=function(x){strsplit(x,split="-")[[1]][1]})
-scenariodetail$basevolid <- scenarios[scenariodetail$scenario,"base.vol.id"]
+
 # Process information for the activities with volume balance entries
 subsetscenario <- scenariodetail[grepl("^VA",scenariodetail$activity.id),]
 
@@ -178,7 +232,6 @@ volumes$delta.scen <- aggregate(select(volumes$delta.scen,-id,-scen),by=list(vol
                     rename(id = Group.1) %>% rbind(select(volumes$delta.scen,-scen),.)
 rownames(volumes$delta.scen) <- volumes$delta.scen$id
 # volumes$total.scen <- volumes$delta.scen[grepl("^SC(.*)-",volumes$delta.scen$id),]
-
 volumes$total.scen.comps <- volumes$delta.scen$id[grepl("^SC(.*)-",volumes$delta.scen$id)]
 volumes$total.scen <- as.matrix(select(volumes$total[subsetscenario[volumes$total.scen.comps,"basevolid"],],-id))
 # mutate(id = volumes$total.scen.comps)
@@ -337,7 +390,7 @@ money$gm.actual.monthly <- mutate(money$gm.actual.monthly,
 
 promisetag <- rownames(scenarios)[scenarios$type=="latest.promise"]
 fcasttag <- rownames(scenarios)[scenarios$type=="latest.forecast"]
-combine.with <- list("v.o"=fcasttag)
+combine.with <- list("V&O"=fcasttag)
 # Get the GM profiles for non-actuals data. Will need to overwrite month
 # field to get it back to an actual date field, too many errors with TZ trying
 # to use as.Date
@@ -547,8 +600,8 @@ detailview$act.table <- left_join(detailview$act.table, select(metadata,id,proje
                     # group_by(scen,Activity,year) %>%
                     # summarise(value=sum(gm.delta)) %>% ungroup
 
-temp.key <- "v.o"
-temp.lookup <- filter(scenariogroups,type==temp.key)$id
+temp.key <- "V&O"
+temp.lookup <- filter(scenarioconfig,grepl(paste("^",temp.key,sep=""),scenarioconfig$title))$id
 temp.rownum <- which(money$gm.profile.comb$id %in% temp.lookup)
 detailview$gmdelta.plot <- select(money$gm.profile.comb,-merge.id)
 detailview$gmdelta.plot$gm.fcast <- left_join(data.frame(month=detailview$gmdelta.plot$month)
@@ -562,12 +615,6 @@ temp.colorder <- grepl("gm.delta.cum",colnames(detailview$gmdelta.plot))
 detailview$gmdelta.plot <- detailview$gmdelta.plot[,!temp.colorder] %>%
                     group_by(id) %>% mutate(gm.delta.cum = cumsum(gm.delta)) %>%
                     ungroup
-# detailview$gmdelta.plot[temp.rownum,c("gm.delta","gm","gm.delta.cum")] <- 
-#                     apply(detailview$gmdelta.plot[temp.rownum,c("gm.delta","gm","gm.delta.cum")],2,
-#                           FUN = function(x){
-#                                         x+detailview$gmdelta.plot[temp.rownum,"gm.fcast"]
-#                           })
-                    
 
 temp.lookup <- which(volumes$total.scen$id %in% scenarioconfig$id)
 detailview$scen.vol.table <- apply(t(select(volumes$total.scen[temp.lookup,],-id)),2,round,1)
