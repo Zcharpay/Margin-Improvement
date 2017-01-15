@@ -116,9 +116,12 @@ ui <- dashboardPage(
       # Second tab content
       tabItem(tabName = "detailview",
               fluidRow(
-                    box(title="GM Impact of Activities",width = 9,
+                    box(title="GM Impact of Activities (per month)",
                         plotOutput("detailview_deltagmplot",height = 450)    
-                        )
+                        ),
+                    box(title="GM Impact of Activities (cumulative)",
+                        plotOutput("detailview_cumulgmplot",height = 450)    
+                    )
               ),
               # fluidRow(
               #       tabBox(
@@ -131,14 +134,17 @@ ui <- dashboardPage(
               #                           )
               #       )
               # ),
+              # fluidRow(
+              #                     box(title="Scenarios",collapsible = TRUE, width=9,
+              #                         DT::dataTableOutput("detailview_scentable")
+              #                         )
+              # ),
               fluidRow(
-                                  box(title="Scenarios",collapsible = TRUE, width=9,
-                                      DT::dataTableOutput("detailview_scentable")
-                                      )
-              ),
-              fluidRow(
-                    tabBox(title="Activities",width=12, id="detailview_activ_tabs",
+                    tabBox(title="Activities",width=11, id="detailview_activ_tabs",
                            tabPanel("Individual",
+                                    fluidRow(
+                                        DT::dataTableOutput("detailview_scentable")                
+                                    ),
                                     fluidRow(
                                         DT::dataTableOutput("detailview_acttable")
                                         )
@@ -201,6 +207,7 @@ ui <- dashboardPage(
 server <- function(input, output){
   output$GMpermonth <- renderPlot({
                     data.plot <- filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm")
+                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual","Forecast","Promise")),colour.series)$colour.code
                     ggplot(data.plot,aes(month,value))+
                     geom_line(aes(color=id))+geom_point(aes(color=id))+
                     scale_y_continuous(breaks=seq(round(min(data.plot$value),0)-1,round(max(data.plot$value),0)+1,by=2))+
@@ -209,11 +216,13 @@ server <- function(input, output){
                                         axis.text.x  = element_text(size=14),
                                         axis.title.y = element_text(size=17),
                                         axis.text.y = element_text(size=14)
-                          )
+                          )+
+                    scale_colour_manual(values=pal)
                     })
 
   output$GMpermonthcum <- renderPlot({
                     data.plot <- filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm.delta.cum")
+                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual","Forecast","Promise")),colour.series)$colour.code
                     ggplot(data.plot,aes(month,value))+
                     geom_line(aes(color=id))+geom_point(aes(color=id))+
                                         scale_y_continuous(breaks=seq(round(min(data.plot$value),-1),round(max(data.plot$value),-1),by=5))+
@@ -221,7 +230,8 @@ server <- function(input, output){
                                         theme(axis.title.x = element_text(size=17),
                                               axis.text.x  = element_text(size=14),
                                               axis.title.y = element_text(size=17),
-                                              axis.text.y = element_text(size=14))
+                                              axis.text.y = element_text(size=14))+
+                                        scale_colour_manual(values=pal)
                     })
 
   output$dashtable_summary_table <- renderTable(dash$table.summary)
@@ -315,25 +325,58 @@ server <- function(input, output){
   rownames = FALSE
   )
 
-  # detailview_scentable
-  output$detailview_deltagmplot <- renderPlot({
+  detailview_chart.scens <- reactive({
                       if(is.null(input$detailview_scentable_rows_selected)){
-                                        chart.scens <- c(fcasttag,promisetag)
+                                          chart.scens <- c(fcasttag,promisetag)
                       }else{
-                                        chart.scens <- detailview$scen.table[
-                                                            input$detailview_scentable_rows_selected,"id"]
+                                          chart.scens <- detailview$scen.table[
+                                                              input$detailview_scentable_rows_selected,"id"]
                       }
-                      data.plot <- select(filter(money$gm.profile.comb,id %in% chart.scens)
-                                          ,id,month,gm.delta)
+  })
+  
+  detailview_chart.data <- reactive({
+                      filter(detailview$gmdelta.plot,id %in% detailview_chart.scens())
+  })
+  
+  output$detailview_deltagmplot <- renderPlot({
+                      # if(is.null(input$detailview_scentable_rows_selected)){
+                      #                   chart.scens <- c(fcasttag,promisetag)
+                      # }else{
+                      #                   chart.scens <- detailview$scen.table[
+                      #                                       input$detailview_scentable_rows_selected,"id"]
+                      # }
+                      data.plot <- select(detailview_chart.data(),id,title,month,gm.delta)
+                      # browser()
+                      # data.plot$title <- with(data.plot,factor(title,levels=title[order(title)]))
+                      # pal <- filter(colour_pal,id %in% chart.scens)$hex
+                      # pal <- arrange(filter(colour_pal,id %in% chart.scens),colour.series)$colour.code
+                      pal <- colour_pal[unique(arrange(data.plot,title)$id),"colour.code"]
+                      # browser()
                       ggplot(data.plot,aes(month,gm.delta))+
-                                          geom_line(aes(color=id))+geom_point(aes(color=id))+
-                                          scale_y_continuous(breaks=seq(round(min(data.plot$gm.delta),0)-1,round(max(data.plot$gm.delta),0)+1,by=2))+
-                                          ylab("USD$M per Month")+xlab("Time")+
+                                          geom_line(aes(color=title))+geom_point(aes(color=title))+
+                                          scale_y_continuous(breaks=seq(round(min(data.plot$gm.delta),0)-1,round(max(data.plot$gm.delta),0)+1,by=0.5))+
+                                          ylab("Delta GM, USD$M per Month")+xlab("Time")+
                                           theme(axis.title.x = element_text(size=17),
                                                 axis.text.x  = element_text(size=14),
                                                 axis.title.y = element_text(size=17),
                                                 axis.text.y = element_text(size=14)
-                                          )
+                                          )+
+                                          scale_colour_manual(values=pal)
+  })
+  # detailview_cumulgmplot
+  output$detailview_cumulgmplot <- renderPlot({
+                      data.plot <- select(detailview_chart.data(),id,title,month,gm.delta.cum)
+                      pal <- colour_pal[unique(arrange(data.plot,title)$id),"colour.code"]
+                      ggplot(data.plot,aes(month,gm.delta.cum))+
+                                          geom_line(aes(color=title))+geom_point(aes(color=title))+
+                                          scale_y_continuous(breaks=seq(round(min(data.plot$gm.delta.cum),-1),round(max(data.plot$gm.delta.cum),-1),by=5))+
+                                          ylab("Cumulative Delta GM, USD$M")+xlab("Time")+
+                                          theme(axis.title.x = element_text(size=17),
+                                                axis.text.x  = element_text(size=14),
+                                                axis.title.y = element_text(size=17),
+                                                axis.text.y = element_text(size=14)
+                                          )+
+                                          scale_colour_manual(values=pal)
   })
   
   output$detailview_scentable <- DT::renderDataTable({

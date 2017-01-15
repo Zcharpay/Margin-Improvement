@@ -4,6 +4,7 @@ library(lubridate)
 library(reshape2)
 library(ggplot2)
 library(tidyr)
+library(randomcoloR)
 
 options(stringsAsFactors = FALSE)
 filename <- "Test tracker structure12.xlsx"
@@ -100,6 +101,7 @@ colnames(scenarioconfig)[1] <- "id"
 idxscenarioconfig.scen <- !grepl("Actual",rownames(scenarioconfig))
 scenarios <- scenarioconfig[idxscenarioconfig.scen,]
 scenarioconfig$scen.num <- gsub("SC","",scenarioconfig$id)
+scenarioconfig$colour.series = scenarioconfig$title
 scenariogroups <- data.frame(type=character(),level=character())
 scenariogroup_titles <- c("bip"="BIP","v.o"="V&O","project"="Project","summary.category"="Category")
 for(type in names(scenariogroup_titles)){
@@ -109,16 +111,18 @@ for(type in names(scenariogroup_titles)){
 }
 scenariogroups <- filter(scenariogroups,level!="No",level!="System") %>%
                     mutate(title = paste(scenariogroup_titles[type]," (",level,")",sep=""),
-                           num = seq_along(type)+scenario_maxid)
+                           num = seq_along(type)+scenario_maxid) %>%
+                    mutate(id = paste("SC",num,sep=""))
 scenario_maxid <- max(as.numeric(filter(scenarioconfig,scen.num!="Actual")$scen.num))
 scenarioconfig <- rbind(scenarioconfig,
-                        data.frame(id=paste("SC",scenariogroups$num,sep=""),
+                        data.frame(id=scenariogroups$id,
                                    base.vol.id=scenarioconfig[fcasttag,"base.vol.id"],
                                    base.price.id=scenarioconfig[fcasttag,"base.price.id"],
                                    title=scenariogroups$title,
                                    description=scenariogroups$title,
-                                   type="Scenario",
-                                   scen.num=scenariogroups$num)
+                                   type="Auto",
+                                   scen.num=scenariogroups$num,
+                                   colour.series=scenariogroups$level)
                         )
 rownames(scenarioconfig) <- scenarioconfig$id
 
@@ -128,8 +132,7 @@ metadata_long <- gather(metadata,key=type,value=level,-id)
 scenariodetail <- read.xlsx(file=filename,sheetName = "Scenario",stringsAsFactors=FALSE,header=TRUE)
 # This will remove any column/row that is entirely NA values (bad excel behaviour)
 scenariodetail <- scenariodetail[rowSums(is.na(scenariodetail))<ncol(scenariodetail),colSums(is.na(scenariodetail))<nrow(scenariodetail)]
-rownames(scenariodetail) <- as.character(scenariodetail[,1])
-
+# rownames(scenariodetail) <- as.character(scenariodetail[,1])
 for(rowidx in 1:nrow(scenariogroups)){
                     x <- scenariogroups[rowidx,]
                     temp.lookup <- filter(metadata_long,type==x$type,level==x$level) %>%
@@ -138,6 +141,7 @@ for(rowidx in 1:nrow(scenariogroups)){
                           data.frame(scenariodetail=paste("SC",as.numeric(x$num),"-",temp.lookup$seq,sep=""),
                                      activity.id=temp.lookup$id))
 }
+rownames(scenariodetail) <- scenariodetail$scenariodetail
 # scenariodetail <- apply(scenariogroups,1,FUN = function(x){
 #                     temp.lookup <- filter(metadata_long,type==x["type"],level==x["level"]) %>%
 #                                         mutate(seq=seq_along(id))
@@ -147,6 +151,11 @@ for(rowidx in 1:nrow(scenariogroups)){
 #                     browser()
 # })
 
+## Read scenario detail table from the excel workbook
+plotcolours <- read.xlsx(file=filename,sheetName = "Plotcolours",stringsAsFactors=FALSE,header=TRUE)
+# This will remove any column/row that is entirely NA values (bad excel behaviour)
+plotcolours <- plotcolours[rowSums(is.na(plotcolours))<ncol(plotcolours),colSums(is.na(plotcolours))<nrow(plotcolours)]
+colnames(plotcolours)[1] <- "series"
 ################## Intermediate data ##############################
 ## Data wrangling in this section to setup everything required to calculate final results
 # Identify parent scenario for the individual activities in scenario detail
@@ -328,6 +337,7 @@ money$gm.actual.monthly <- mutate(money$gm.actual.monthly,
 
 promisetag <- rownames(scenarios)[scenarios$type=="latest.promise"]
 fcasttag <- rownames(scenarios)[scenarios$type=="latest.forecast"]
+combine.with <- list("v.o"=fcasttag)
 # Get the GM profiles for non-actuals data. Will need to overwrite month
 # field to get it back to an actual date field, too many errors with TZ trying
 # to use as.Date
@@ -342,6 +352,25 @@ money$gm.profile.comb$month <- rep(phasedates, each=nrow(money$gm.profile.comb)/
 money$gm.profile.comb <- inner_join(money$gm.profile.comb, 
                                     select(money$gm.profile.delta.cum,merge.id,gm.delta.cum),
                                     by="merge.id")
+# temp.join <- inner_join(money$gm.profile.comb,select(scenariodetail,scenariodetail,activity.id),
+#                         by=c("id"="scenariodetail"))
+temp.lookup <- money$gm.profile.comb$id %in% scenariodetail$scenariodetail
+money$gm.profile.comb$activity.id <- scenariodetail[money$gm.profile.comb$id,"activity.id"]
+money$gm.profile.comb$title <- metadata[money$gm.profile.comb$activity.id,"title"]
+# temp.join <- inner_join(money$gm.profile.comb,select(metadata,id,title),
+#                         by="id")
+temp.lookup <- money$gm.profile.comb$id %in% metadata$id
+money$gm.profile.comb[temp.lookup,"title"] <- metadata[money$gm.profile.comb[temp.lookup,"id"],"title"]
+temp.lookup <- money$gm.profile.comb$id %in% scenarioconfig$id
+money$gm.profile.comb[temp.lookup,"title"] <- scenarioconfig[money$gm.profile.comb[temp.lookup,"id"],"title"]
+
+# money$gm.profile.comb <- left_join(money$gm.profile.comb,select(scenariodetail,scenariodetail,activity.id),
+#                                by=c("id"="scenariodetail"))
+# temp.lookup <- is.na(money$gm.profile.comb$activity.id)
+# money$gm.profile.comb[!temp.lookup,"title"] <- metadata[money$gm.profile.comb[
+                                                            # !temp.lookup,"activity.id"],"title"]
+# money$gm.profile.comb[temp.lookup,"title"] <- scenarioconfig[money$gm.profile.comb[
+                                                            # temp.lookup,"activity.id"],"title"]
 
 dash <- list()
 # dash$data <- select(money$gm.profile.comb,-merge.id)
@@ -362,7 +391,8 @@ dash <- list()
 #                     left_join(dash$data,.,by="month") %>%
 #                     gather(key=measure, value=value,-id,-month)
 
-dash$gm.mth <- select(filter(money$gm.profile.comb, id %in% c(promisetag,fcasttag)),-merge.id)
+dash$gm.mth <- select(filter(money$gm.profile.comb, id %in% c(promisetag,fcasttag)),
+                      id,month,gm.delta,gm,gm.delta.cum)
 str.from <- c(promisetag, fcasttag); str.to <- c("Promise","Forecast")
 for(x in seq_along(str.from)){dash$gm.mth$id <- gsub(str.from[x],str.to[x],dash$gm.mth$id)}
 dash$gm.mth <- rbind(dash$gm.mth,
@@ -395,7 +425,7 @@ temp.join <- inner_join(money$gm.profile.comb, scenariodetail, by = c("id" = "sc
 temp.join <- filter(temp.join, scenario %in% c(promisetag, fcasttag))
 dash$table.past <- semi_join(money$gm.profile.comb,temp.join,by="id") %>%
                     filter(month <= actuals.latest.mth) %>%
-                    select(-merge.id)
+                    select(id,month,gm.delta,gm,gm.delta.cum)
 dash$table.past$Activity <- scenariodetail[dash$table.past$id,"activity.id"]
 dash$table.past$Category <- metadata[dash$table.past$Activity,"summary.category"]
 dash$table.past$Title <- metadata[dash$table.past$Activity,"title"]
@@ -440,7 +470,7 @@ dash$table.past.act <- dash$table.past.act[,c("Category","Title",cnames[-temp.lo
 # temp.join <- filter(temp.join, scenario %in% c(promisetag, fcasttag))
 dash$table.future <- semi_join(money$gm.profile.comb,temp.join,by="id") %>%
                     filter(month > actuals.latest.mth) %>%
-                    select(-merge.id)
+                    select(id,month,gm.delta,gm,gm.delta.cum)
 dash$table.future$Activity <- scenariodetail[dash$table.future$id,"activity.id"]
 dash$table.future$Category <- metadata[dash$table.future$Activity,"summary.category"]
 dash$table.future$Title <- metadata[dash$table.future$Activity,"title"]
@@ -517,6 +547,39 @@ detailview$act.table <- left_join(detailview$act.table, select(metadata,id,proje
                     # group_by(scen,Activity,year) %>%
                     # summarise(value=sum(gm.delta)) %>% ungroup
 
+temp.key <- "v.o"
+temp.lookup <- filter(scenariogroups,type==temp.key)$id
+temp.rownum <- which(money$gm.profile.comb$id %in% temp.lookup)
+detailview$gmdelta.plot <- select(money$gm.profile.comb,-merge.id)
+detailview$gmdelta.plot$gm.fcast <- left_join(data.frame(month=detailview$gmdelta.plot$month)
+                                                         ,select(filter(detailview$gmdelta.plot,id==combine.with[[temp.key]]),
+                                                                 month,gm.delta),by="month")$gm.delta
+for(colm in c("gm.delta","gm")){
+                    detailview$gmdelta.plot[temp.rownum,colm] <- as.matrix(detailview$gmdelta.plot[temp.rownum,colm])+
+                                        as.matrix(detailview$gmdelta.plot[temp.rownum,"gm.fcast"])
+}
+temp.colorder <- grepl("gm.delta.cum",colnames(detailview$gmdelta.plot))
+detailview$gmdelta.plot <- detailview$gmdelta.plot[,!temp.colorder] %>%
+                    group_by(id) %>% mutate(gm.delta.cum = cumsum(gm.delta)) %>%
+                    ungroup
+# detailview$gmdelta.plot[temp.rownum,c("gm.delta","gm","gm.delta.cum")] <- 
+#                     apply(detailview$gmdelta.plot[temp.rownum,c("gm.delta","gm","gm.delta.cum")],2,
+#                           FUN = function(x){
+#                                         x+detailview$gmdelta.plot[temp.rownum,"gm.fcast"]
+#                           })
+                    
+
 temp.lookup <- which(volumes$total.scen$id %in% scenarioconfig$id)
 detailview$scen.vol.table <- apply(t(select(volumes$total.scen[temp.lookup,],-id)),2,round,1)
 colnames(detailview$scen.vol.table) <- scenarioconfig[colnames(detailview$scen.vol.table),"title"]
+
+# colour_pal <- data.frame(id=unique(money$gm.profile.comb$id),hex=rainbow_hcl(length(unique(money$gm.profile.comb$id))))
+colour_pal <- left_join(select(scenarioconfig,id,colour.series),plotcolours,by=c("colour.series"="series"))
+temp.lookup <- which(is.na(colour_pal$colour.code))
+colour_pal[temp.lookup,"colour.code"] <- distinctColorPalette(length(temp.lookup))
+rownames(colour_pal) <- colour_pal$id
+# temp.rownum <- length(unique(money$gm.profile.comb$id))
+
+# colour_pal <- data.frame(id=unique(money$gm.profile.comb$id),hex=sample(colorRampPalette(c("Red","Green","Blue"))(temp.rownum),temp.rownum))
+# colour_pal <- data.frame(id=unique(money$gm.profile.comb$id),hex=distinctColorPalette(temp.rownum))
+
