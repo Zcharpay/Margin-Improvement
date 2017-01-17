@@ -7,7 +7,7 @@ library(tidyr)
 library(randomcoloR)
 
 options(stringsAsFactors = FALSE)
-filename <- "Test tracker structure12.xlsx"
+filename <- "Test tracker structure16.xlsx"
 
 ################## Read Inputs from File ##############################
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
@@ -107,11 +107,15 @@ for(type in names(scenariogroup_titles)){
                                         type=type, level=unique(metadata[,type])
                     ))
 }
+scenario_maxid <- max(as.numeric(filter(scenarioconfig,scen.num!="Actual")$scen.num))
 scenariogroups <- filter(scenariogroups,level!="No",level!="System") %>%
                     mutate(title = paste(scenariogroup_titles[type]," (",level,")",sep=""),
                            num = seq_along(type)+scenario_maxid) %>%
                     mutate(id = paste("SC",num,sep=""))
-scenario_maxid <- max(as.numeric(filter(scenarioconfig,scen.num!="Actual")$scen.num))
+
+fcasttag <- filter(scenarioconfig,type=="latest.forecast")$id
+promisetag <- filter(scenarioconfig,type=="latest.promise")$id
+
 scenarioconfig <- rbind(scenarioconfig,
                         data.frame(id=scenariogroups$id,
                                    base.vol.id=scenarioconfig[fcasttag,"base.vol.id"],
@@ -146,6 +150,7 @@ scenariogroups_combos <- list("O(all)"=data.frame(type="v.o",level=c("O(high)","
                               "O(hi+med)"=data.frame(type="v.o",level=c("O(high)","O(medium)"),title="O(hi+med)"))
 scenariogroups_combos <- lapply(scenariogroups_combos,FUN=function(x){mutate(x,
                                         id.title=paste(scenariogroup_titles[x$type[1]]," (",x$title[1],")",sep=""))})
+
 temp.count <- 0
 for(combo in scenariogroups_combos){
                     temp.count <- temp.count + 1
@@ -388,8 +393,8 @@ money$gm.actual.monthly <- mutate(money$gm.actual.monthly,
 ################## Data for App Output Elements ##############################
 ## Marshal the data required for the app's output elements e.g. charts etc
 
-promisetag <- rownames(scenarios)[scenarios$type=="latest.promise"]
-fcasttag <- rownames(scenarios)[scenarios$type=="latest.forecast"]
+# promisetag <- rownames(scenarios)[scenarios$type=="latest.promise"]
+# fcasttag <- rownames(scenarios)[scenarios$type=="latest.forecast"]
 combine.with <- list("V&O"=fcasttag)
 # Get the GM profiles for non-actuals data. Will need to overwrite month
 # field to get it back to an actual date field, too many errors with TZ trying
@@ -595,7 +600,7 @@ temp.lookup <- which(detailview$act.table$id %in% filter(scenariodetail,scenario
 detailview$act.table[temp.lookup,"dash.group"] <- "Forecast"
 temp.lookup <- which(detailview$act.table$id %in% filter(scenariodetail,scenario==promisetag)$activity.id)
 detailview$act.table[temp.lookup,"dash.group"] <- "Promise"
-detailview$act.table <- left_join(detailview$act.table, select(metadata,id,project,bip,v.o),by="id")
+detailview$act.table <- left_join(detailview$act.table, select(metadata,id,project,v.o,resource,score,owner,status),by="id")
                     # mutate(dash$table.future, year=year(month)) %>% 
                     # group_by(scen,Activity,year) %>%
                     # summarise(value=sum(gm.delta)) %>% ungroup
