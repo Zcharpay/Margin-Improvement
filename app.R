@@ -206,7 +206,8 @@ ui <- dashboardPage(
 
 server <- function(input, output){
   output$GMpermonth <- renderPlot({
-                    data.plot <- filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm")
+                    browser()
+                    data.plot <- filter(dash$gm.mth, id=="Actual @ base prices" | id == "Forecast" | id=="Promise", measure=="gm")
                     pal <- arrange(filter(colour_pal,colour.series %in% c("Actual","Forecast","Promise")),colour.series)$colour.code
                     ggplot(data.plot,aes(month,value))+
                     geom_line(aes(color=id))+geom_point(aes(color=id))+
@@ -234,10 +235,12 @@ server <- function(input, output){
                                         scale_colour_manual(values=pal)
                     })
 
-  output$dashtable_summary_table <- renderTable(dash$table.summary)
+  # output$dashtable_summary_table <- renderTable(dash$table.summary)
 
   output$dashtable_past_table <- DT::renderDataTable({
-                    dash$table.past.cat
+                    if(dash$is.there.actuals){
+                                        dash$table.past.cat
+                    } else {"No Actuals Data"}
       # rbind(dashtable[["pastbycat"]],c("TOTAL",colSums(select(dashtable[["pastbycat"]],-(Category)))))
       # dashtable[["pastbycat"]]
     },
