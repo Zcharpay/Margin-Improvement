@@ -7,7 +7,7 @@ library(tidyr)
 library(randomcoloR)
 
 options(stringsAsFactors = FALSE)
-filename <- "Test tracker structure16.xlsx"
+filename <- "Test tracker structure17.xlsx"
 
 ################## Read Inputs from File ##############################
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
