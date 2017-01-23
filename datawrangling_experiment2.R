@@ -107,7 +107,7 @@ for(type in names(scenariogroup_titles)){
                                         type=type, level=unique(metadata[,type])
                     ))
 }
-scenario_maxid <- max(as.numeric(filter(scenarioconfig,scen.num!="Actual")$scen.num))
+scenario_maxid <- max(as.numeric(filter(scenarioconfig,scen.num!="Actual @ base prices")$scen.num))
 scenariogroups <- filter(scenariogroups,level!="No",level!="System") %>%
                     mutate(title = paste(scenariogroup_titles[type]," (",level,")",sep=""),
                            num = seq_along(type)+scenario_maxid) %>%
@@ -454,8 +454,8 @@ dash$data[temp.lookup,"description"] <- scenarioconfig[dash$data[temp.lookup,"id
 
 # Filter the data so only using dates within user-selected range
 user <- list()
-user$date.start <- ymd("2017-02-01")
-user$date.end <- ymd("2019-02-01")
+user$date.start <- ymd("2017-01-01")
+user$date.end <- ymd("2018-02-01")
 dash$data.filtered <- filter(dash$data,month >= user$date.start, month <= user$date.end)
 
 # Compile the subset required for the gm per month charts
@@ -563,6 +563,7 @@ dash$table.future.cat[,-temp.lookup] <- apply(dash$table.future.cat[,-temp.looku
 dash$table.future.cat$Total <- rowSums(dash$table.future.cat[,-temp.lookup])
 str.from <- c("promise.elem","fcast.elem"); str.to <- c("Promise","Forecast")
 for(x in seq_along(str.from)){dash$table.future.cat$type <- gsub(str.from[x],str.to[x],dash$table.future.cat$type)}
+dash$future.types <- c("Forecast","Promise","Fcast.to.Prom")
 
 dash$table.future.act <- mutate(dash$table.future, year=year(month)) %>% 
                     group_by(type,Activity,year) %>%
@@ -618,7 +619,7 @@ detailview$act.table <- left_join(detailview$act.table, select(metadata,id,proje
 temp.key <- "V&O"
 temp.lookup <- filter(scenarioconfig,grepl(paste("^",temp.key,sep=""),scenarioconfig$title))$id
 temp.rownum <- which(dash$data.filtered$id %in% temp.lookup)
-detailview$gmdelta.plot <- select(dash$data.filtered,id,month,gm,gm.delta,gm.delta.cum,activity.id,type)
+detailview$gmdelta.plot <- select(dash$data.filtered,id,month,gm,gm.delta,gm.delta.cum,activity.id,title)
 detailview$gmdelta.plot$gm.fcast <- left_join(data.frame(month=detailview$gmdelta.plot$month)
                                                          ,select(filter(detailview$gmdelta.plot,id==combine.with[[temp.key]]),
                                                                  month,gm.delta),by="month")$gm.delta

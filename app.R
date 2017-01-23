@@ -206,9 +206,9 @@ ui <- dashboardPage(
 
 server <- function(input, output){
   output$GMpermonth <- renderPlot({
-                    browser()
                     data.plot <- filter(dash$gm.mth, id=="Actual @ base prices" | id == "Forecast" | id=="Promise", measure=="gm")
-                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual","Forecast","Promise")),colour.series)$colour.code
+                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual @ base prices","Forecast","Promise")),colour.series)$colour.code
+                    browser()
                     ggplot(data.plot,aes(month,value))+
                     geom_line(aes(color=id))+geom_point(aes(color=id))+
                     scale_y_continuous(breaks=seq(round(min(data.plot$value),0)-1,round(max(data.plot$value),0)+1,by=2))+
@@ -222,8 +222,8 @@ server <- function(input, output){
                     })
 
   output$GMpermonthcum <- renderPlot({
-                    data.plot <- filter(dash$gm.mth, id=="Actual" | id == "Forecast" | id=="Promise", measure=="gm.delta.cum")
-                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual","Forecast","Promise")),colour.series)$colour.code
+                    data.plot <- filter(dash$gm.mth, id=="Actual @ base prices" | id == "Forecast" | id=="Promise", measure=="gm.delta.cum")
+                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual @ base prices","Forecast","Promise")),colour.series)$colour.code
                     ggplot(data.plot,aes(month,value))+
                     geom_line(aes(color=id))+geom_point(aes(color=id))+
                                         scale_y_continuous(breaks=seq(round(min(data.plot$value),-1),round(max(data.plot$value),-1),by=5))+
@@ -236,39 +236,45 @@ server <- function(input, output){
                     })
 
   # output$dashtable_summary_table <- renderTable(dash$table.summary)
-
-  output$dashtable_past_table <- DT::renderDataTable({
-                    if(dash$is.there.actuals){
+  if(dash$is.there.actuals){
+                      output$dashtable_past_table <- DT::renderDataTable({
                                         dash$table.past.cat
-                    } else {"No Actuals Data"}
-      # rbind(dashtable[["pastbycat"]],c("TOTAL",colSums(select(dashtable[["pastbycat"]],-(Category)))))
-      # dashtable[["pastbycat"]]
-    },
-    options = list(dom = "t",pageLength = 100),
-    # options = list(autoWidth = TRUE),
-    rownames = FALSE
-    )
-
-  output$dashtable_past_table_details <- DT::renderDataTable({
-    if(is.null(input$dashtable_past_table_rows_selected)){
-                    table.data <- select(dash$table.past.act,-Activity)
-    }else{
-      cat <- dash$table.past.cat[input$dashtable_past_table_rows_selected,"Category"]
-      table.data <- select(filter(dash$table.past.act,Category %in% as.matrix(cat)),-Activity)
-      # browser()
-    }
-    # browser()
-    rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-Title,-Category))))
-  },
-  options = list(pageLength = 100),
-  # options = list(autoWidth = TRUE),
-  rownames = FALSE
-  )
+                          # rbind(dashtable[["pastbycat"]],c("TOTAL",colSums(select(dashtable[["pastbycat"]],-(Category)))))
+                          # dashtable[["pastbycat"]]
+                        },
+                        options = list(dom = "t",pageLength = 100),
+                        # options = list(autoWidth = TRUE),
+                        rownames = FALSE
+                        )
+  } else {
+                      output$dashtable_past_table <- renderText("No Actuals Data")
+                      }
+  
+  if(dash$is.there.actuals){
+                      output$dashtable_past_table_details <- DT::renderDataTable({
+                                          if(is.null(input$dashtable_past_table_rows_selected)){
+                                                              table.data <- select(dash$table.past.act,-Activity)
+                                          }else{
+                                                              cat <- dash$table.past.cat[input$dashtable_past_table_rows_selected,"Category"]
+                                                              table.data <- select(filter(dash$table.past.act,Category %in% as.matrix(cat)),-Activity)
+                                                              # browser()
+                                          }
+                                          # browser()
+                                          rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-Title,-Category))))
+                      },
+                      options = list(pageLength = 100),
+                      # options = list(autoWidth = TRUE),
+                      rownames = FALSE
+                      )  
+  } else {
+                      output$dashtable_past_table_details <- renderText("No Actuals Data")
+  }
+  
 
   output$dashtable_future_table <- DT::renderDataTable({
-    table.data.cat <- select(filter(dash$table.future.cat,scen==dash$future.types[
+    table.data.cat <- select(filter(dash$table.future.cat,type==dash$future.types[
                         as.numeric(input$dashtable_future_select)]),
-                        -(scen))
+                        -(type))
     # browser()
     rbind(table.data.cat,c("TOTAL",colSums(select(table.data.cat,-(Category)))))
     # return(table.data.cat)
@@ -283,7 +289,7 @@ server <- function(input, output){
       unique(dash$table.future.cat$Category)
     }else{
                     # browser()
-      filter(dash$table.future.cat,scen==dash$future.types[
+      filter(dash$table.future.cat,type==dash$future.types[
         as.numeric(input$dashtable_future_select)])[input$dashtable_future_table_rows_selected,"Category"]
     }
     })
@@ -318,8 +324,8 @@ server <- function(input, output){
     table.data <- arrange(table.data,desc(Total),Category,Title)
     # browser()
 
-    table.data <- select(filter(table.data,scen==dash$future.types[
-                  as.numeric(input$dashtable_future_select)] & Category %in% as.vector(t(futurecat()))),-scen,-Activity)
+    table.data <- select(filter(table.data,type==dash$future.types[
+                  as.numeric(input$dashtable_future_select)] & Category %in% as.vector(t(futurecat()))),-type,-Activity)
     rbind(table.data,c("TOTAL","TOTAL",colSums(select(table.data,-(Category),-(Title)))))
     # browser()
     },
@@ -409,10 +415,10 @@ server <- function(input, output){
     # table.data.mth <- filter(dash$gm.mth, month == res$month)
     if(res$month %in% mths.with.actuals){
                     table.data.mth <- select(filter(dash$table.past, month == res$month),-gm,-gm.delta.cum,-month) %>%
-                                        spread(key=scen, value=gm.delta)
+                                        spread(key=type, value=gm.delta)
     }else{
                         table.data.mth <- select(filter(dash$table.future, month == res$month),-gm,-gm.delta.cum,-month,-id) %>%
-                                            spread(key=scen, value=gm.delta)
+                                            spread(key=type, value=gm.delta)
     }
     # browser()
     temp.lookup <- match(c("Activity","Category","Title"),colnames(table.data.mth))
