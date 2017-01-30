@@ -13,7 +13,10 @@ ui <- dashboardPage(
       menuItem("Volume Balance",tabName = "volbal", icon = icon("balance-scale"))
     ),
     sliderInput("dashslider_date", "Date Filter:", min=as.Date("2017-01-01"), max=as.Date("2019-12-01"),
-                value=c(as.Date("2017-01-01"),as.Date("2019-12-01")), step = NULL, timeFormat = "%b-%y")
+                value=c(as.Date("2017-01-01"),as.Date("2019-12-01")), step = NULL, timeFormat = "%b-%y"),
+    dateRangeInput("daterange","Date Filter:",start=phasedates[1],
+                   end=phasedates.max, min=phasedates[1], max=phasedates.max,
+                   startview = "year", format = "M-yy")
   ),
   dashboardBody(
     tabItems(
@@ -204,11 +207,40 @@ ui <- dashboardPage(
   )
 )
 
+str.from <- c(promisetag, fcasttag,"actual.base"); str.to <- c("Promise","Forecast","Actual @ base prices")
+
 server <- function(input, output){
+
+  dash$series <- c("Actual @ base prices","Forecast","Promise")
+  
+  data.filtered <- reactive({
+                      date.start <- input$daterange[1]; day(date.start) <- 1
+                      date.end <- input$daterange[2]; day(date.end) <- 1
+                      filter(dash$data,month >= date.start, month <= date.end)
+                      # browser()
+  })
+  
+  dash$gm.mth <- reactive({
+                      data <- fun_dash_gmmth(data.filtered())
+                      # for(x in seq_along(str.from)){data$id <- gsub(str.from[x],str.to[x],data$id)}
+                      data
+  })
+  
+  series.inscope <- reactive({which.series(dash$gm.mth()$id,dash$series)>0})
+  
+  dash$is.there.actuals <- reactive({
+                      sum(data.filtered()$month <= actuals.latest.mth)>0
+                      })
+  # observeEvent(data.filtered(),{
+  #                     dash$is.there.actuals <<- sum(data.filtered()$month <= actuals.latest.mth)>0
+  #                     })
+  
   output$GMpermonth <- renderPlot({
-                    data.plot <- filter(dash$gm.mth, id=="Actual @ base prices" | id == "Forecast" | id=="Promise", measure=="gm")
-                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual @ base prices","Forecast","Promise")),colour.series)$colour.code
-                    browser()
+                    # browser()
+                    # browser()
+                    data.plot <- filter(dash$gm.mth(), id %in% dash$series[series.inscope()], measure=="gm")
+                    pal <- arrange(filter(colour_pal,colour.series %in% dash$series[series.inscope()]),colour.series)$colour.code
+                    # browser()
                     ggplot(data.plot,aes(month,value))+
                     geom_line(aes(color=id))+geom_point(aes(color=id))+
                     scale_y_continuous(breaks=seq(round(min(data.plot$value),0)-1,round(max(data.plot$value),0)+1,by=2))+
@@ -222,8 +254,8 @@ server <- function(input, output){
                     })
 
   output$GMpermonthcum <- renderPlot({
-                    data.plot <- filter(dash$gm.mth, id=="Actual @ base prices" | id == "Forecast" | id=="Promise", measure=="gm.delta.cum")
-                    pal <- arrange(filter(colour_pal,colour.series %in% c("Actual @ base prices","Forecast","Promise")),colour.series)$colour.code
+                    data.plot <- filter(dash$gm.mth(), id %in% dash$series[series.inscope()], measure=="gm.delta.cum")
+                    pal <- arrange(filter(colour_pal,colour.series %in% dash$series[series.inscope()]),colour.series)$colour.code
                     ggplot(data.plot,aes(month,value))+
                     geom_line(aes(color=id))+geom_point(aes(color=id))+
                                         scale_y_continuous(breaks=seq(round(min(data.plot$value),-1),round(max(data.plot$value),-1),by=5))+
@@ -234,29 +266,40 @@ server <- function(input, output){
                                               axis.text.y = element_text(size=14))+
                                         scale_colour_manual(values=pal)
                     })
-
-  # output$dashtable_summary_table <- renderTable(dash$table.summary)
-  if(dash$is.there.actuals){
+# output$dashtable_summary_table <- renderTable(dash$table.summary)
+# eventReactive(data.filtered(),{
+#              dash$is.there.actuals <- sum(data.filtered()$month <= actuals.latest.mth)>0
+#              browser()
+#   if(dash$is.there.actuals){
+                      dash$table.past <- reactive({
+                                          fun_dash_tablepast(data.filtered(),dash$is.there.actuals())
+                      })
+                      
+                      dash$table.past.cat <- reactive({
+                                          fun_dash_tablepastcat(dash$table.past(),dash$is.there.actuals())
+                      })
+                      # browser()
+                      dash$table.past.act <- reactive({
+                                          fun_dash_tablepastact(dash$table.past(),dash$is.there.actuals())
+                      })
                       output$dashtable_past_table <- DT::renderDataTable({
-                                        dash$table.past.cat
-                          # rbind(dashtable[["pastbycat"]],c("TOTAL",colSums(select(dashtable[["pastbycat"]],-(Category)))))
-                          # dashtable[["pastbycat"]]
+                                        dash$table.past.cat()
                         },
                         options = list(dom = "t",pageLength = 100),
                         # options = list(autoWidth = TRUE),
                         rownames = FALSE
                         )
-  } else {
-                      output$dashtable_past_table <- renderText("No Actuals Data")
-                      }
+  # } else {
+                      # output$dashtable_past_table <<- renderText("No Actuals Data")
+                      # }
   
-  if(dash$is.there.actuals){
+  # if(dash$is.there.actuals()){
                       output$dashtable_past_table_details <- DT::renderDataTable({
                                           if(is.null(input$dashtable_past_table_rows_selected)){
-                                                              table.data <- select(dash$table.past.act,-Activity)
+                                                              table.data <- select(dash$table.past.act(),-Activity)
                                           }else{
-                                                              cat <- dash$table.past.cat[input$dashtable_past_table_rows_selected,"Category"]
-                                                              table.data <- select(filter(dash$table.past.act,Category %in% as.matrix(cat)),-Activity)
+                                                              cat <- dash$table.past.cat()[input$dashtable_past_table_rows_selected,"Category"]
+                                                              table.data <- select(filter(dash$table.past.act(),Category %in% as.matrix(cat)),-Activity)
                                                               # browser()
                                           }
                                           # browser()
@@ -265,14 +308,28 @@ server <- function(input, output){
                       options = list(pageLength = 100),
                       # options = list(autoWidth = TRUE),
                       rownames = FALSE
-                      )  
-  } else {
-                      output$dashtable_past_table_details <- renderText("No Actuals Data")
-  }
+                      )
+  # } else {
+                      # output$dashtable_past_table_details <<- renderText("No Actuals Data")
+  # }
+  dash$table.future <- reactive({
+                      fun_dash_tablefuture(data.filtered())
+  })
   
-
+  dash$table.future.cat <- reactive({
+                      fun_dash_tablefuturecat(dash$table.future())
+  })
+  
+  dash$table.future.act <- reactive({
+                      fun_dash_tablefutureact(dash$table.future())
+  })
+  
+  dash$table.future.emptact <- reactive({
+                      fun_dash_tablefutureemptact(dash$table.future.act())
+  })
+                      
   output$dashtable_future_table <- DT::renderDataTable({
-    table.data.cat <- select(filter(dash$table.future.cat,type==dash$future.types[
+    table.data.cat <- select(filter(dash$table.future.cat(),type==dash$future.types[
                         as.numeric(input$dashtable_future_select)]),
                         -(type))
     # browser()
@@ -286,10 +343,10 @@ server <- function(input, output){
 
   futurecat <- reactive({
     if(is.null(input$dashtable_future_table_rows_selected)){
-      unique(dash$table.future.cat$Category)
+      unique(dash$table.future.cat()$Category)
     }else{
                     # browser()
-      filter(dash$table.future.cat,type==dash$future.types[
+      filter(dash$table.future.cat(),type==dash$future.types[
         as.numeric(input$dashtable_future_select)])[input$dashtable_future_table_rows_selected,"Category"]
     }
     })
@@ -298,14 +355,15 @@ server <- function(input, output){
 
   output$dashtable_future_table_details <- DT::renderDataTable({
     if(input$dashtable_future_select_zeros==1){
-                    table.data <- filter(dash$table.future.act,
-                                         !(Activity %in% dash$table.future.emptact)) 
+                        table.data <- dash$table.future.act()
+                    # table.data <- filter(dash$table.future.act(),
+                    #                      !(Activity %in% dash$table.future.emptact())) 
       # rowidx <- !apply(select(filter(dash$table.future.act, type != "Fcast.to.Prom"),
       #                         -Category,-Title,-Activity,-scen),1,
       #                  FUN=function(x){all(x==0)})
       # table.data <- select(dashtable[["future"]],-(type))
     }else if(input$dashtable_future_select_zeros==2){
-                        table.data <- dash$table.future.act
+                        table.data <- dash$table.future.act()
       # rowidx <- rep(TRUE,nrow(filter(dashtable[["future"]], type != "Fcast.to.Prom")))
     }
                       # if(is.null(input$dashtable_future_table_rows_selected)){
@@ -407,7 +465,7 @@ server <- function(input, output){
   output$plot_clickedpoints <- DT::renderDataTable({
     # For base graphics, we need to specify columns, though for ggplot2,
     # it's usually not necessary.
-    res <- nearPoints(dash$gm.mth, input$plot_click_GMpermonth)
+    res <- nearPoints(dash$gm.mth(), input$plot_click_GMpermonth)
     # res$month <- as.POSIXct(as.numeric(res$month), origin="1970-01-01", tz="GMT")
     # browser()
     if (nrow(res) == 0)
