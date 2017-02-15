@@ -7,7 +7,7 @@ library(tidyr)
 library(randomcoloR)
 
 options(stringsAsFactors = FALSE)
-filename <- "Test tracker structure17.xlsx"
+filename <- "Test tracker structure21.xlsx"
 
 ################## Read Inputs from File ##############################
 ## Read price data from the excel workbook, tidy up, convert to numeric matrix
@@ -371,7 +371,7 @@ money$inout.actual.base <- (volactuals*prices[scenarioconfig[rep("Actual",times=
 volstruc.mat <- matrix(rep(t(volstruc),times=nrow(money$inout.actual.base)),nrow=nrow(money$inout.actual.base),byrow=TRUE)
 money$gm.actual <- rowSums(money$inout.actual.base*volstruc.mat) %>% 
                     data.frame(gm.delta = .,
-                               gm = . + money$gm.base.scenario["Actual","gm"],
+                               gm = . + money$gm.base.scenario["Actual @ base prices","gm"],
                                merge.id = actuals$'id',
                                month = actuals$'month',
                                activity.id = actuals$'activity.id',
